@@ -41,27 +41,44 @@ export default function Home() {
     });
   }, []);
 
-  // Track usage
+  // Track usage - runs whenever user or anonId changes
   useEffect(() => {
-    if (!user && anonId) {
-      // Anonymous user - count from localStorage
+    if (user) {
+      // Logged in user - check user_usage table for persistent count
+      supabase
+        .from('user_usage')
+        .select('count')
+        .eq('user_id', user.id)
+        .single()
+        .then(({ data, error }) => {
+          if (error || !data) {
+            // No record yet - check usage_logs for today's count
+            supabase
+              .from('usage_logs')
+              .select('created_at', { count: 'exact' })
+              .eq('user_id', user.id)
+              .gte('created_at', new Date().toISOString().split('T')[0])
+              .then(({ count }) => {
+                setUsageCount(count || 0);
+              });
+          } else {
+            setUsageCount(data.count || 0);
+          }
+        });
+    } else if (anonId) {
+      // Anonymous user - count from localStorage (only after anonId is set)
       const count = localStorage.getItem('anon_usage_count') || '0';
       setUsageCount(parseInt(count, 10));
-    } else if (user) {
-      // Logged in user - count from Supabase
-      supabase
-        .from('usage_logs')
-        .select('created_at', { count: 'exact' })
-        .eq('user_id', user.id)
-        .gte('created_at', new Date().toISOString().split('T')[0])
-        .then(({ count }) => {
-          setUsageCount(count || 0);
-        });
     }
   }, [user, anonId]);
 
   const showCopyToast = () => {
     setToastMessage('Copied to clipboard!');
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const showSaveToast = () => {
+    setToastMessage('Hook saved successfully!');
     setTimeout(() => setToastMessage(null), 3000);
   };
 
@@ -87,10 +104,28 @@ export default function Home() {
 
       // Increment usage
       if (user) {
+        // Log the usage
         await supabase.from('usage_logs').insert({
           user_id: user.id,
           input_text: input.trim(),
         });
+        // Update or create user_usage record for persistence
+        const { data: existingUsage } = await supabase
+          .from('user_usage')
+          .select('count')
+          .eq('user_id', user.id)
+          .single();
+
+        if (existingUsage) {
+          await supabase
+            .from('user_usage')
+            .update({ count: (existingUsage.count || 0) + 1, updated_at: new Date().toISOString() })
+            .eq('user_id', user.id);
+        } else {
+          await supabase
+            .from('user_usage')
+            .insert({ user_id: user.id, count: 1 });
+        }
         setUsageCount(prev => prev + 1);
       } else {
         const newCount = usageCount + 1;
@@ -210,6 +245,7 @@ export default function Home() {
                   hook={hook}
                   user={user}
                   onCopy={showCopyToast}
+                  onSave={showSaveToast}
                 />
               ))}
             </div>
