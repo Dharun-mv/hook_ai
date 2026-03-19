@@ -102,32 +102,11 @@ export default function Home() {
     } else {
       setHooks(result.hooks);
 
-      // Increment usage
-      if (user) {
-        // Log the usage
-        await supabase.from('usage_logs').insert({
-          user_id: user.id,
-          input_text: input.trim(),
-        });
-        // Update or create user_usage record for persistence
-        const { data: existingUsage } = await supabase
-          .from('user_usage')
-          .select('count')
-          .eq('user_id', user.id)
-          .single();
-
-        if (existingUsage) {
-          await supabase
-            .from('user_usage')
-            .update({ count: (existingUsage.count || 0) + 1, updated_at: new Date().toISOString() })
-            .eq('user_id', user.id);
-        } else {
-          await supabase
-            .from('user_usage')
-            .insert({ user_id: user.id, count: 1 });
-        }
-        setUsageCount(prev => prev + 1);
-      } else {
+      // Update usage count from server response
+      if (result.usageCount !== undefined) {
+        setUsageCount(result.usageCount);
+      } else if (!user) {
+        // Anonymous user fallback
         const newCount = usageCount + 1;
         localStorage.setItem('anon_usage_count', newCount.toString());
         setUsageCount(newCount);

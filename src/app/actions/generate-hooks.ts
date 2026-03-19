@@ -1,6 +1,7 @@
 'use server';
 
 import { GoogleGenAI } from '@google/genai';
+import { createClient } from '@supabase/supabase-js';
 
 interface Hook {
   id: string;
@@ -13,12 +14,36 @@ interface Hook {
 interface GenerateHooksResult {
   hooks: Hook[];
   error?: string;
+  usageCount?: number;
 }
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+const FREE_TIER_LIMIT = 5;
 
 export async function generateHooks(input: string): Promise<GenerateHooksResult> {
   try {
+    // Get authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { hooks: [], error: 'Authentication required' };
+    }
+
+    // Check usage limit from user_usage table
+    const { data: usageData, error: usageError } = await supabase
+      .from('user_usage')
+      .select('count')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!usageError && usageData && usageData.count >= FREE_TIER_LIMIT) {
+      return { hooks: [], error: 'Usage limit reached. Please upgrade to continue.' };
+    }
     const prompt = `You are an elite viral content strategist. Transform the provided text into 3 high-impact hooks using these psychological frameworks:
 
 1. The Anti-Trend (Going against popular advice)
@@ -72,7 +97,30 @@ Return ONLY a valid JSON object with this exact structure:
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    return { hooks: parsed.hooks };
+    // Increment usage count in user_usage table
+    const { data: existingUsage } = await supabase
+      .from('user_usage')
+      .select('count')
+      .eq('user_id', user.id)
+      .single();
+
+    if (existingUsage) {
+      await supabase
+        .from('user_usage')
+        .update({ count: (existingUsage.count || 0) + 1, updated_at: new Date().toISOString() })
+        .eq('user_id', user.id);
+    } else {
+      await supabase
+        .from('user_usage')
+        .insert({ user_id: user.id, count: 1 });
+    }
+
+    // Also log the usage
+    await supabase
+      .from('usage_logs')
+      .insert({ user_id: user.id, input_text: input });
+
+    return { hooks: parsed.hooks, usageCount: (existingUsage?.count || 0) + 1 };
   } catch (error) {
     console.error('Hook generation error:', error);
     return {
