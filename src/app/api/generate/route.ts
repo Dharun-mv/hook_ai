@@ -1,18 +1,32 @@
-import { GoogleGenAI } from '@google/genai';
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 const FREE_TIER_LIMIT = 5;
 
-export const maxDuration = 60;
-
 export async function POST(req: NextRequest) {
+  // Initialize clients inside the function to avoid build-time instantiation
+  const { GoogleGenAI } = await import('@google/genai');
+  const { createClient } = await import('@supabase/supabase-js');
+
+  // Validate environment variables
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('Missing GEMINI_API_KEY');
+  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL');
+  }
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
+  }
+
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
