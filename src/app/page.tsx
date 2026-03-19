@@ -95,110 +95,90 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setHooks(null);
+    setStreaming(true);
 
     try {
       // Get auth token
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
-      if (!token && !user) {
-        // Anonymous user - use local storage ID
-        const response = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input: input.trim() }),
-        });
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ input: input.trim() }),
+      });
 
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-        if (!reader) throw new Error('No response body');
+      if (!reader) throw new Error('No response body');
 
-        let done = false;
-        let accumulatedText = '';
+      let done = false;
+      let accumulatedText = '';
+      const partialHooks: Hook[] = [];
 
-        while (!done) {
-          const { value, done: streamDone } = await reader.read();
-          done = streamDone;
-          if (value) {
-            const chunk = decoder.decode(value);
-            for (const line of chunk.split('\n')) {
-              if (line.trim()) {
-                try {
-                  const data = JSON.parse(line);
-                  if (data.error) {
-                    setError(data.error);
-                    setLoading(false);
-                    return;
-                  }
-                  if (data.chunk) {
-                    accumulatedText += data.chunk;
-                  }
-                  if (data.done) {
-                    setHooks(data.hooks);
-                    setUsageCount(data.usageCount);
-                  }
-                } catch (e) {
-                  // Skip invalid JSON lines
+      while (!done) {
+        const { value, done: streamDone } = await reader.read();
+        done = streamDone;
+        if (value) {
+          const chunk = decoder.decode(value);
+          for (const line of chunk.split('\n')) {
+            if (line.trim()) {
+              try {
+                const data = JSON.parse(line);
+                if (data.error) {
+                  setError(data.error);
+                  setLoading(false);
+                  setStreaming(false);
+                  return;
                 }
-              }
-            }
-          }
-        }
-
-        // For anonymous users, increment local count
-        const newCount = usageCount + 1;
-        localStorage.setItem('anon_usage_count', newCount.toString());
-        setUsageCount(newCount);
-      } else {
-        // Logged in user - use streaming API with auth
-        const response = await fetch('/api/generate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({ input: input.trim() }),
-        });
-
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-
-        if (!reader) throw new Error('No response body');
-
-        let done = false;
-
-        while (!done) {
-          const { value, done: streamDone } = await reader.read();
-          done = streamDone;
-          if (value) {
-            const chunk = decoder.decode(value);
-            for (const line of chunk.split('\n')) {
-              if (line.trim()) {
-                try {
-                  const data = JSON.parse(line);
-                  if (data.error) {
-                    setError(data.error);
-                    setLoading(false);
-                    return;
+                if (data.chunk) {
+                  accumulatedText += data.chunk;
+                  // Try to parse partial hooks from accumulated text
+                  const jsonMatch = accumulatedText.match(/\{[\s\S]*"hooks"[\s\S]*\}/);
+                  if (jsonMatch) {
+                    try {
+                      const parsed = JSON.parse(jsonMatch[0]);
+                      if (parsed.hooks && Array.isArray(parsed.hooks)) {
+                        partialHooks.length = 0;
+                        partialHooks.push(...parsed.hooks);
+                        setHooks([...partialHooks]);
+                      }
+                    } catch {
+                      // Partial JSON, keep accumulating
+                    }
                   }
-                  if (data.done) {
-                    setHooks(data.hooks);
-                    setUsageCount(data.usageCount || 0);
-                  }
-                } catch (e) {
-                  // Skip invalid JSON lines
                 }
+                if (data.done && data.hooks) {
+                  setHooks(data.hooks);
+                  setUsageCount(data.usageCount || 0);
+                }
+              } catch {
+                // Skip invalid JSON lines
               }
             }
           }
         }
       }
+
+      // For anonymous users, increment local count
+      if (!token) {
+        const newCount = usageCount + 1;
+        localStorage.setItem('anon_usage_count', newCount.toString());
+        setUsageCount(newCount);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate hooks');
+      setLoading(false);
+      setStreaming(false);
+      return;
     }
 
     setLoading(false);
+    setStreaming(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -271,7 +251,7 @@ export default function Home() {
                 disabled={(loading || streaming) || !input.trim()}
                 className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-neutral-700 disabled:text-neutral-500 text-black rounded-lg font-medium transition-all"
               >
-                {loading ? (
+                {loading || streaming ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     {streaming ? 'Streaming...' : 'Generating...'}

@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        // Start streaming AI response immediately
+        // Start streaming AI response immediately - don't wait for DB operations below
         const prompt = `You are an elite viral content strategist. Transform the provided text into 3 high-impact hooks using these psychological frameworks:
 
 1. The Anti-Trend (Going against popular advice)
@@ -115,35 +115,30 @@ Return ONLY a valid JSON object with this exact structure:
 
         const parsed = JSON.parse(jsonMatch[0]);
 
-        // Update usage count after successful generation
+        // Get current usage count for response
         const { data: existingUsage } = await supabase
           .from('user_usage')
           .select('count')
           .eq('user_id', user.id)
           .single();
 
-        if (existingUsage) {
-          await supabase
-            .from('user_usage')
-            .update({ count: (existingUsage.count || 0) + 1, updated_at: new Date().toISOString() })
-            .eq('user_id', user.id);
-        } else {
-          await supabase
-            .from('user_usage')
-            .insert({ user_id: user.id, count: 1 });
-        }
+        const newCount = (existingUsage?.count || 0) + 1;
 
-        // Log usage
-        await supabase
-          .from('usage_logs')
-          .insert({ user_id: user.id, input_text: input });
-
+        // Send complete response to client
         controller.enqueue(encoder.encode(JSON.stringify({
           hooks: parsed.hooks,
           done: true,
-          usageCount: (existingUsage?.count || 0) + 1
+          usageCount: newCount
         }) + '\n'));
         controller.close();
+
+        // Update database in background (non-blocking)
+        Promise.allSettled([
+          existingUsage
+            ? supabase.from('user_usage').update({ count: newCount, updated_at: new Date().toISOString() }).eq('user_id', user.id)
+            : supabase.from('user_usage').insert({ user_id: user.id, count: newCount }),
+          supabase.from('usage_logs').insert({ user_id: user.id, input_text: input })
+        ]).catch(() => {}); // Silently ignore background DB errors
 
       } catch (error) {
         console.error('Generation error:', error);
