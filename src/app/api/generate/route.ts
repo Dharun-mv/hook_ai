@@ -35,35 +35,45 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const input = body.input;
 
-        // Get authenticated user
+        // Authenticate user gracefully (allow anonymous)
         const authHeader = req.headers.get('authorization');
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          controller.enqueue(encoder.encode(JSON.stringify({ error: 'Authentication required' }) + '\n'));
-          controller.close();
-          return;
+        let user: any = null;
+
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.replace('Bearer ', '');
+          const { data: authData } = await supabase.auth.getUser(token);
+          if (authData?.user) {
+            user = authData.user;
+          }
         }
 
-        const token = authHeader.replace('Bearer ', '');
-        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        let newCount = 0;
 
-        if (authError || !user) {
-          controller.enqueue(encoder.encode(JSON.stringify({ error: 'Authentication required' }) + '\n'));
-          controller.close();
-          return;
+        if (user) {
+          // Check usage limit - optimized with single query
+          const { data: usageData, error: usageError } = await supabase
+            .from('user_usage')
+            .select('count')
+            .eq('user_id', user.id)
+            .single();
+
+          if (!usageError && usageData && usageData.count >= FREE_TIER_LIMIT) {
+            controller.enqueue(encoder.encode(JSON.stringify({ error: 'Usage limit reached. Please upgrade to continue.' }) + '\n'));
+            controller.close();
+            return;
+          }
+
+          newCount = (usageData?.count || 0) + 1;
+
+          // Start database updates in the background immediately, bypassing RLS using service role
+          Promise.allSettled([
+            usageData
+              ? supabase.from('user_usage').update({ count: newCount, updated_at: new Date().toISOString() }).eq('user_id', user.id)
+              : supabase.from('user_usage').insert({ user_id: user.id, count: newCount }),
+            supabase.from('usage_logs').insert({ user_id: user.id, input_text: input })
+          ]).catch(() => {}); // Silently ignore background DB errors
         }
-
-        // Check usage limit - optimized with single query
-        const { data: usageData, error: usageError } = await supabase
-          .from('user_usage')
-          .select('count')
-          .eq('user_id', user.id)
-          .single();
-
-        if (!usageError && usageData && usageData.count >= FREE_TIER_LIMIT) {
-          controller.enqueue(encoder.encode(JSON.stringify({ error: 'Usage limit reached. Please upgrade to continue.' }) + '\n'));
-          controller.close();
-          return;
-        }
+        // If user is null, frontend automatically enforces the 2 hook anonymous local limit.
 
         // Start streaming AI response immediately - don't wait for DB operations below
         const prompt = `You are an elite viral content strategist. Transform the provided text into 3 high-impact hooks using these psychological frameworks:
@@ -101,22 +111,6 @@ Return ONLY a valid JSON object with this exact structure:
   ]
 }`;
 
-        // Get current usage count for response early
-        const { data: existingUsage } = await supabase
-          .from('user_usage')
-          .select('count')
-          .eq('user_id', user.id)
-          .single();
-
-        const newCount = (existingUsage?.count || 0) + 1;
-
-        // Start database updates in the background immediately
-        Promise.allSettled([
-          existingUsage
-            ? supabase.from('user_usage').update({ count: newCount, updated_at: new Date().toISOString() }).eq('user_id', user.id)
-            : supabase.from('user_usage').insert({ user_id: user.id, count: newCount }),
-          supabase.from('usage_logs').insert({ user_id: user.id, input_text: input })
-        ]).catch(() => {}); // Silently ignore background DB errors
 
         // Use streaming for faster perceived response
         const streamingResponse = await ai.models.generateContentStream({

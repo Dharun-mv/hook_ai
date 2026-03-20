@@ -159,7 +159,7 @@ export default function Home() {
                 }
                 if (data.done && data.hooks) {
                   setHooks(data.hooks);
-                  setUsageCount(data.usageCount || 0);
+                  if (data.usageCount) setUsageCount(data.usageCount);
                 }
               } catch {
                 // Skip invalid JSON lines
