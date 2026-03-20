@@ -137,19 +137,24 @@ export default function Home() {
                 }
                 if (data.chunk) {
                   accumulatedText += data.chunk;
-                  // Try to parse partial hooks from accumulated text
-                  const jsonMatch = accumulatedText.match(/\{[\s\S]*"hooks"[\s\S]*\}/);
-                  if (jsonMatch) {
-                    try {
-                      const parsed = JSON.parse(jsonMatch[0]);
-                      if (parsed.hooks && Array.isArray(parsed.hooks)) {
-                        partialHooks.length = 0;
-                        partialHooks.push(...parsed.hooks);
-                        setHooks([...partialHooks]);
+                  
+                  // Strip markdown codeblocks
+                  let fixStr = accumulatedText.replace(/^```json\s*/, '').replace(/```\s*$/, '');
+                  let parsed = null;
+                  
+                  // Progressive strict JSON auto-completion to parse chunks mid-stream
+                  try { parsed = JSON.parse(fixStr); } catch (e) {
+                    try { parsed = JSON.parse(fixStr + '"}'); } catch (e) {
+                      try { parsed = JSON.parse(fixStr + '"]}'); } catch (e) {
+                        try { parsed = JSON.parse(fixStr + '}]}'); } catch (e) {
+                          try { parsed = JSON.parse(fixStr + '"}]}'); } catch (e) {}
+                        }
                       }
-                    } catch {
-                      // Partial JSON, keep accumulating
                     }
+                  }
+
+                  if (parsed?.hooks && Array.isArray(parsed.hooks)) {
+                    setHooks([...parsed.hooks]);
                   }
                 }
                 if (data.done && data.hooks) {

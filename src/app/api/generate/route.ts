@@ -101,8 +101,25 @@ Return ONLY a valid JSON object with this exact structure:
   ]
 }`;
 
+        // Get current usage count for response early
+        const { data: existingUsage } = await supabase
+          .from('user_usage')
+          .select('count')
+          .eq('user_id', user.id)
+          .single();
+
+        const newCount = (existingUsage?.count || 0) + 1;
+
+        // Start database updates in the background immediately
+        Promise.allSettled([
+          existingUsage
+            ? supabase.from('user_usage').update({ count: newCount, updated_at: new Date().toISOString() }).eq('user_id', user.id)
+            : supabase.from('user_usage').insert({ user_id: user.id, count: newCount }),
+          supabase.from('usage_logs').insert({ user_id: user.id, input_text: input })
+        ]).catch(() => {}); // Silently ignore background DB errors
+
         // Use streaming for faster perceived response
-        const streamingResponse = await ai.models.streamGenerateContent({
+        const streamingResponse = await ai.models.generateContentStream({
           model: 'gemini-2.5-flash-lite',
           contents: prompt,
           config: {
@@ -129,15 +146,6 @@ Return ONLY a valid JSON object with this exact structure:
 
         const parsed = JSON.parse(jsonMatch[0]);
 
-        // Get current usage count for response
-        const { data: existingUsage } = await supabase
-          .from('user_usage')
-          .select('count')
-          .eq('user_id', user.id)
-          .single();
-
-        const newCount = (existingUsage?.count || 0) + 1;
-
         // Send complete response to client
         controller.enqueue(encoder.encode(JSON.stringify({
           hooks: parsed.hooks,
@@ -145,14 +153,6 @@ Return ONLY a valid JSON object with this exact structure:
           usageCount: newCount
         }) + '\n'));
         controller.close();
-
-        // Update database in background (non-blocking)
-        Promise.allSettled([
-          existingUsage
-            ? supabase.from('user_usage').update({ count: newCount, updated_at: new Date().toISOString() }).eq('user_id', user.id)
-            : supabase.from('user_usage').insert({ user_id: user.id, count: newCount }),
-          supabase.from('usage_logs').insert({ user_id: user.id, input_text: input })
-        ]).catch(() => {}); // Silently ignore background DB errors
 
       } catch (error) {
         console.error('Generation error:', error);
