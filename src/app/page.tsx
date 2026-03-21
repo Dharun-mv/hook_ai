@@ -25,6 +25,11 @@ export default function Home() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [anonId, setAnonId] = useState<string>('');
   const [generatedInput, setGeneratedInput] = useState('');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Get or create anonymous ID
   useEffect(() => {
@@ -217,24 +222,26 @@ export default function Home() {
         </div>
 
         {/* Credits Display */}
-        <div className="max-w-md mx-auto mb-8">
-          <div className="flex items-center justify-between text-sm mb-2">
-            <span className="text-neutral-400">
-              {user ? 'Free Tier' : 'Anonymous'} Usage
-            </span>
-            <span className={remaining <= 1 ? 'text-orange-400' : 'text-emerald-400'}>
-              {remaining} remaining today
-            </span>
+        {mounted && (
+          <div className="max-w-md mx-auto mb-8">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-neutral-400">
+                {user ? 'Free Tier' : 'Anonymous'} Usage
+              </span>
+              <span className={remaining <= 1 ? 'text-orange-400' : 'text-emerald-400'}>
+                {remaining} remaining today
+              </span>
+            </div>
+            <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all ${
+                  remaining <= 1 ? 'bg-orange-500' : 'bg-emerald-500'
+                }`}
+                style={{ width: `${(usageCount / limit) * 100}%` }}
+              />
+            </div>
           </div>
-          <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all ${
-                remaining <= 1 ? 'bg-orange-500' : 'bg-emerald-500'
-              }`}
-              style={{ width: `${(usageCount / limit) * 100}%` }}
-            />
-          </div>
-        </div>
+        )}
 
         {/* Input Section */}
         <div className="max-w-2xl mx-auto mb-12">

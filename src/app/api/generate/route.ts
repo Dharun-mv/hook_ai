@@ -9,24 +9,14 @@ export async function POST(req: NextRequest) {
   try {
     // Initialize clients inside the function to avoid build-time instantiation
     const { GoogleGenAI } = await import('@google/genai');
-    const { createClient } = await import('@supabase/supabase-js');
+    const { supabaseAdmin } = await import('@/lib/supabase-admin');
 
     // Validate environment variables
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('Missing GEMINI_API_KEY');
     }
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL');
-    }
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
-    }
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    );
 
     const body = await req.json();
     const input = body.input;
