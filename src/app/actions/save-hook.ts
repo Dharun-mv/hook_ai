@@ -26,7 +26,7 @@ export async function saveHookAction(originalText: string, hookContent: string, 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
 
   if (authError || !user) {
-    return { success: false, error: 'Unauthorized' };
+    return { error: 'Unauthorized' };
   }
 
   console.log("Saving hook for user:", user.id);
@@ -39,7 +39,7 @@ export async function saveHookAction(originalText: string, hookContent: string, 
   });
 
   if (error) {
-    return { success: false, error: error.message };
+    return { error: error.message };
   }
 
   return { success: true };

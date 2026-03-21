@@ -113,6 +113,25 @@ export default function Home() {
         body: JSON.stringify({ input: input.trim() }),
       });
 
+      if (response.status === 403) {
+        setShowUpgradeModal(true);
+        setLoading(false);
+        setStreaming(false);
+        return;
+      }
+
+      if (response.status >= 500) {
+        setToastMessage('Server Maintenance');
+        setLoading(false);
+        setStreaming(false);
+        return;
+      }
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to generate hooks');
+      }
+
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
@@ -120,58 +139,38 @@ export default function Home() {
 
       let done = false;
       let accumulatedText = '';
-      const partialHooks: Hook[] = [];
 
       while (!done) {
         const { value, done: streamDone } = await reader.read();
         done = streamDone;
         if (value) {
-          const chunk = decoder.decode(value);
-          for (const line of chunk.split('\n')) {
-            if (line.trim()) {
-              try {
-                const data = JSON.parse(line);
-                if (data.error) {
-                  setError(data.error);
-                  setLoading(false);
-                  setStreaming(false);
-                  return;
+          const chunk = decoder.decode(value, { stream: true });
+          accumulatedText += chunk;
+          
+          // Strip markdown codeblocks
+          let fixStr = accumulatedText.replace(/^```json\s*/, '').replace(/```\s*$/, '');
+          let parsed = null;
+          
+          // Progressive strict JSON auto-completion to parse chunks mid-stream
+          try { parsed = JSON.parse(fixStr); } catch (e) {
+            try { parsed = JSON.parse(fixStr + '"}'); } catch (e) {
+              try { parsed = JSON.parse(fixStr + '"]}'); } catch (e) {
+                try { parsed = JSON.parse(fixStr + '}]}'); } catch (e) {
+                  try { parsed = JSON.parse(fixStr + '"}]}'); } catch (e) {}
                 }
-                if (data.chunk) {
-                  accumulatedText += data.chunk;
-                  
-                  // Strip markdown codeblocks
-                  let fixStr = accumulatedText.replace(/^```json\s*/, '').replace(/```\s*$/, '');
-                  let parsed = null;
-                  
-                  // Progressive strict JSON auto-completion to parse chunks mid-stream
-                  try { parsed = JSON.parse(fixStr); } catch (e) {
-                    try { parsed = JSON.parse(fixStr + '"}'); } catch (e) {
-                      try { parsed = JSON.parse(fixStr + '"]}'); } catch (e) {
-                        try { parsed = JSON.parse(fixStr + '}]}'); } catch (e) {
-                          try { parsed = JSON.parse(fixStr + '"}]}'); } catch (e) {}
-                        }
-                      }
-                    }
-                  }
-
-                  if (parsed?.hooks && Array.isArray(parsed.hooks)) {
-                    setHooks([...parsed.hooks]);
-                  }
-                }
-                if (data.done && data.hooks) {
-                  setHooks(data.hooks);
-                  if (data.usageCount) setUsageCount(data.usageCount);
-                }
-              } catch {
-                // Skip invalid JSON lines
               }
             }
+          }
+
+          if (parsed?.hooks && Array.isArray(parsed.hooks)) {
+            setHooks([...parsed.hooks]);
           }
         }
       }
 
-      // For anonymous users, increment local count
+      // After streaming is complete, increment count for anonymous and authenticated users locally UI
+      const newCount = usageCount + 1;
+      setUsageCount(newCount);
       if (!token) {
         const newCount = usageCount + 1;
         localStorage.setItem('anon_usage_count', newCount.toString());
