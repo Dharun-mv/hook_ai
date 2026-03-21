@@ -6,10 +6,12 @@ import { Hook } from '@/lib/hooks-generator';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
+import { saveHookAction } from '@/app/actions/save-hook';
 
 interface HookCardProps {
   hook: Hook;
   user: User | null;
+  originalText?: string;
   isSaved?: boolean;
   onCopy?: () => void;
   onSave?: () => void;
@@ -42,7 +44,7 @@ const colors = {
   },
 };
 
-export function HookCard({ hook, user, isSaved, onCopy, onSave }: HookCardProps) {
+export function HookCard({ hook, user, originalText, isSaved, onCopy, onSave }: HookCardProps) {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(isSaved);
   const [loading, setLoading] = useState(false);
@@ -58,22 +60,20 @@ export function HookCard({ hook, user, isSaved, onCopy, onSave }: HookCardProps)
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user || !originalText) return;
     setLoading(true);
 
     if (saved) {
-      await supabase.from('saved_hooks').delete().eq('hook_id', hook.id);
+      await supabase.from('saved_hooks').delete().eq('hook_content', hook.content);
       setSaved(false);
     } else {
-      await supabase.from('saved_hooks').insert({
-        user_id: user.id,
-        hook_id: hook.id,
-        hook_type: hook.type,
-        hook_content: hook.content,
-        hook_title: hook.title,
-      });
-      setSaved(true);
-      onSave?.();
+      const result = await saveHookAction(originalText, hook.content, hook.type);
+      if (result.success) {
+        setSaved(true);
+        onSave?.();
+      } else {
+        console.error('Failed to save hook', result.error);
+      }
     }
 
     setLoading(false);
@@ -98,16 +98,23 @@ export function HookCard({ hook, user, isSaved, onCopy, onSave }: HookCardProps)
           {user && (
             <button
               onClick={handleSave}
-              disabled={loading}
+              disabled={loading || saved}
               className={cn(
-                'p-1.5 rounded-md transition-colors',
+                'p-1.5 flex items-center gap-1 rounded-md transition-colors',
                 saved
-                  ? 'text-yellow-400 bg-yellow-400/10'
-                  : 'text-neutral-400 hover:text-yellow-400 hover:bg-neutral-800'
+                  ? 'text-emerald-400 bg-emerald-400/10'
+                  : 'text-neutral-400 hover:text-emerald-400 hover:bg-neutral-800'
               )}
               title="Save hook"
             >
-              <Star className="w-4 h-4" fill={saved ? 'currentColor' : 'none'} />
+              {saved ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span className="text-xs font-medium">Saved!</span>
+                </>
+              ) : (
+                <Star className="w-4 h-4" />
+              )}
             </button>
           )}
           <button

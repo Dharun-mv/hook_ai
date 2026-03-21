@@ -53,23 +53,39 @@ export async function POST(req: NextRequest) {
           // Check usage limit - optimized with single query
           const { data: usageData, error: usageError } = await supabase
             .from('user_usage')
-            .select('count')
+            .select('count, last_reset')
             .eq('user_id', user.id)
             .single();
 
-          if (!usageError && usageData && usageData.count >= FREE_TIER_LIMIT) {
+          let currentCount = usageData?.count || 0;
+          let lastReset = usageData?.last_reset ? new Date(usageData.last_reset) : null;
+          const today = new Date();
+
+          if (lastReset) {
+            const todayStr = today.toISOString().split('T')[0];
+            const lastResetStr = lastReset.toISOString().split('T')[0];
+            if (todayStr > lastResetStr) {
+              // Reset needed
+              currentCount = 0;
+              await supabase.from('user_usage')
+                .update({ count: 0, last_reset: today.toISOString() })
+                .eq('user_id', user.id);
+            }
+          }
+
+          if (!usageError && usageData && currentCount >= FREE_TIER_LIMIT) {
             controller.enqueue(encoder.encode(JSON.stringify({ error: 'Usage limit reached. Please upgrade to continue.' }) + '\n'));
             controller.close();
             return;
           }
 
-          newCount = (usageData?.count || 0) + 1;
+          newCount = currentCount + 1;
 
           // Start database updates in the background immediately, bypassing RLS using service role
           Promise.allSettled([
             usageData
               ? supabase.from('user_usage').update({ count: newCount, updated_at: new Date().toISOString() }).eq('user_id', user.id)
-              : supabase.from('user_usage').insert({ user_id: user.id, count: newCount }),
+              : supabase.from('user_usage').insert({ user_id: user.id, count: newCount, last_reset: new Date().toISOString() }),
             supabase.from('usage_logs').insert({ user_id: user.id, input_text: input })
           ]).catch(() => {}); // Silently ignore background DB errors
         }

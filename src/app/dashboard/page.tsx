@@ -10,10 +10,9 @@ import { cn } from '@/lib/utils';
 
 interface SavedHook {
   id: string;
-  hook_id: string;
-  hook_type: string;
+  original_text: string;
+  type: string;
   hook_content: string;
-  hook_title: string;
   created_at: string;
 }
 
@@ -50,16 +49,16 @@ export default function DashboardPage() {
       });
   }, [user]);
 
-  const handleCopy = async (hookId: string, content: string) => {
+  const handleCopy = async (id: string, content: string) => {
     await navigator.clipboard.writeText(content);
-    setCopiedId(hookId);
+    setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleDelete = async (hookId: string) => {
+  const handleDelete = async (id: string) => {
     if (!user) return;
-    await supabase.from('saved_hooks').delete().eq('hook_id', hookId);
-    setSavedHooks(prev => prev.filter(h => h.hook_id !== hookId));
+    await supabase.from('saved_hooks').delete().eq('id', id);
+    setSavedHooks(prev => prev.filter(h => h.id !== id));
   };
 
   if (!user) return null;
@@ -123,7 +122,7 @@ export default function DashboardPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {savedHooks.map((savedHook) => {
-              const color = colors[savedHook.hook_type] || colors['anti-trend'];
+              const color = colors[savedHook.type] || colors['anti-trend'];
               return (
                 <div
                   key={savedHook.id}
@@ -134,25 +133,25 @@ export default function DashboardPage() {
                   )}
                 >
                   <div className="flex items-start justify-between mb-3">
-                    <h3 className="font-semibold text-neutral-100">
-                      {savedHook.hook_title}
+                    <h3 className="font-semibold text-neutral-100 max-h-12 overflow-hidden text-ellipsis line-clamp-2" title={savedHook.original_text}>
+                      {savedHook.original_text}
                     </h3>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() =>
-                          handleCopy(savedHook.hook_id, savedHook.hook_content)
+                          handleCopy(savedHook.id, savedHook.hook_content)
                         }
                         className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
                         title="Copy hook"
                       >
-                        {copiedId === savedHook.hook_id ? (
+                        {copiedId === savedHook.id ? (
                           <Check className="w-4 h-4" />
                         ) : (
                           <Copy className="w-4 h-4" />
                         )}
                       </button>
                       <button
-                        onClick={() => handleDelete(savedHook.hook_id)}
+                        onClick={() => handleDelete(savedHook.id)}
                         className="p-1.5 rounded-md text-neutral-400 hover:text-red-400 hover:bg-neutral-800 transition-colors"
                         title="Delete hook"
                       >
@@ -161,7 +160,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <p className="text-sm text-neutral-400 mb-3">
-                    {savedHook.hook_type.replace('-', ' ')}
+                    {savedHook.type.replace('-', ' ')}
                   </p>
                   <p className="text-neutral-200 leading-relaxed text-sm">
                     {savedHook.hook_content}

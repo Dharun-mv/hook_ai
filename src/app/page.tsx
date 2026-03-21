@@ -24,6 +24,7 @@ export default function Home() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [anonId, setAnonId] = useState<string>('');
+  const [generatedInput, setGeneratedInput] = useState('');
 
   // Get or create anonymous ID
   useEffect(() => {
@@ -96,6 +97,7 @@ export default function Home() {
     setError(null);
     setHooks(null);
     setStreaming(true);
+    setGeneratedInput(input.trim());
 
     try {
       // Get auth token
@@ -294,6 +296,7 @@ export default function Home() {
                   key={hook.id}
                   hook={hook}
                   user={user}
+                  originalText={generatedInput}
                   onCopy={showCopyToast}
                   onSave={showSaveToast}
                 />
