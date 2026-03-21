@@ -2,6 +2,7 @@
 
 import { createServerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function saveHookAction(originalText: string, hookContent: string, type: string) {
   const cookieStore = cookies();
@@ -28,7 +29,9 @@ export async function saveHookAction(originalText: string, hookContent: string, 
     return { success: false, error: 'Unauthorized' };
   }
 
-  const { error } = await supabase.from('saved_hooks').insert({
+  console.log("Saving hook for user:", user.id);
+
+  const { error } = await supabaseAdmin.from('saved_hooks').insert({
     user_id: user.id,
     original_text: originalText,
     hook_content: hookContent,

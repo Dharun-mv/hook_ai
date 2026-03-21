@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const supabase = createClient(
+  const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
@@ -41,7 +41,8 @@ export async function POST(req: NextRequest) {
 
         if (authHeader && authHeader.startsWith('Bearer ')) {
           const token = authHeader.replace('Bearer ', '');
-          const { data: authData } = await supabase.auth.getUser(token);
+          // We can use supabaseAdmin.auth.getUser to verify token reliably
+          const { data: authData } = await supabaseAdmin.auth.getUser(token);
           if (authData?.user) {
             user = authData.user;
           }
@@ -51,26 +52,26 @@ export async function POST(req: NextRequest) {
 
         if (user) {
           // Check usage limit - optimized with single query
-          const { data: usageData, error: usageError } = await supabase
+          const { data: usageData, error: usageError } = await supabaseAdmin
             .from('user_usage')
             .select('count, last_reset')
             .eq('user_id', user.id)
             .single();
 
           let currentCount = usageData?.count || 0;
-          let lastReset = usageData?.last_reset ? new Date(usageData.last_reset) : null;
-          const today = new Date();
+          const todayString = new Date().toDateString();
 
-          if (lastReset) {
-            const todayStr = today.toISOString().split('T')[0];
-            const lastResetStr = lastReset.toISOString().split('T')[0];
-            if (todayStr > lastResetStr) {
-              // Reset needed
-              currentCount = 0;
-              await supabase.from('user_usage')
-                .update({ count: 0, last_reset: today.toISOString() })
-                .eq('user_id', user.id);
-            }
+          let lastResetString = null;
+          if (usageData?.last_reset) {
+            lastResetString = new Date(usageData.last_reset).toDateString();
+          }
+
+          if (usageData && lastResetString !== todayString) {
+            // Reset needed
+            currentCount = 0;
+            await supabaseAdmin.from('user_usage')
+              .update({ count: 0, last_reset: new Date().toISOString() })
+              .eq('user_id', user.id);
           }
 
           if (!usageError && usageData && currentCount >= FREE_TIER_LIMIT) {
@@ -80,13 +81,14 @@ export async function POST(req: NextRequest) {
           }
 
           newCount = currentCount + 1;
+          console.log("Usage count updated:", newCount);
 
           // Start database updates in the background immediately, bypassing RLS using service role
           Promise.allSettled([
             usageData
-              ? supabase.from('user_usage').update({ count: newCount, updated_at: new Date().toISOString() }).eq('user_id', user.id)
-              : supabase.from('user_usage').insert({ user_id: user.id, count: newCount, last_reset: new Date().toISOString() }),
-            supabase.from('usage_logs').insert({ user_id: user.id, input_text: input })
+              ? supabaseAdmin.from('user_usage').update({ count: newCount, updated_at: new Date().toISOString() }).eq('user_id', user.id)
+              : supabaseAdmin.from('user_usage').insert({ user_id: user.id, count: newCount, last_reset: new Date().toISOString() }),
+            supabaseAdmin.from('usage_logs').insert({ user_id: user.id, input_text: input })
           ]).catch(() => {}); // Silently ignore background DB errors
         }
         // If user is null, frontend automatically enforces the 2 hook anonymous local limit.
