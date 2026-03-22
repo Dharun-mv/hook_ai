@@ -44,19 +44,21 @@ export async function POST(req: NextRequest) {
         .single();
 
       let currentCount = usageData?.count || 0;
-      const todayString = new Date().toISOString().split('T')[0];
-
-      let lastResetString = null;
+      
+      const today = new Date().toISOString().split('T')[0];
+      let lastResetDate = '';
       if (usageData?.last_reset) {
-        lastResetString = new Date(usageData.last_reset).toISOString().split('T')[0];
+        lastResetDate = new Date(usageData.last_reset).toISOString().split('T')[0];
       }
 
-      if (usageData && lastResetString !== todayString) {
-        // Reset needed
+      console.log('RESET CHECK:', { today, lastResetDate, match: today === lastResetDate });
+
+      if (today !== lastResetDate) {
         currentCount = 0;
-        await supabaseAdmin.from('user_usage')
-          .update({ count: 0, last_reset: new Date().toISOString() })
-          .eq('user_id', user.id);
+        await supabaseAdmin.from('user_usage').upsert(
+          { user_id: user.id, count: 0, last_reset: new Date().toISOString() },
+          { onConflict: 'user_id' }
+        );
       }
 
       if (currentCount >= FREE_TIER_LIMIT) {

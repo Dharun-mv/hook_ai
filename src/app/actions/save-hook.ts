@@ -39,6 +39,7 @@ export async function saveHookAction(originalText: string, hookContent: string, 
   });
 
   if (error) {
+    console.error('SAVE HOOK FATAL INSERT ERROR:', error);
     return { error: error.message };
   }
 
