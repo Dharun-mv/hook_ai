@@ -15,6 +15,9 @@ export async function POST(req: NextRequest) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('Missing GEMINI_API_KEY');
     }
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("CRITICAL: SERVICE_ROLE_KEY IS MISSING IN PRODUCTION");
+    }
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -32,6 +35,8 @@ export async function POST(req: NextRequest) {
         user = authData.user;
       }
     }
+
+    console.log("API ROUTE TRIGGERED for user:", user?.id);
 
     let newCount = 0;
 
@@ -51,14 +56,19 @@ export async function POST(req: NextRequest) {
         lastResetDate = new Date(usageData.last_reset).toDateString();
       }
 
+      console.log("DB last_reset:", usageData?.last_reset, "Current Time:", new Date().toISOString());
       console.log('RESET CHECK:', { today, lastResetDate, match: today === lastResetDate });
 
       if (today !== lastResetDate) {
-        currentCount = 0;
-        await supabaseAdmin.from('user_usage').upsert(
-          { user_id: user.id, count: 0, last_reset: new Date().toISOString(), updated_at: new Date().toISOString() },
-          { onConflict: 'user_id' }
-        );
+        try {
+          currentCount = 0;
+          await supabaseAdmin.from('user_usage').upsert(
+            { user_id: user.id, count: 0, last_reset: new Date().toISOString(), updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          );
+        } catch (error) {
+          console.error("RESET FAILED:", error);
+        }
       }
 
       if (currentCount >= FREE_TIER_LIMIT) {
