@@ -31,12 +31,19 @@ export async function saveHookAction(originalText: string, hookContent: string, 
 
   console.log("Saving hook for user:", user.id);
 
-  const { error } = await supabaseAdmin.from('saved_hooks').insert({
+  const payload = {
     user_id: user.id,
     original_text: originalText,
     hook_content: hookContent,
     type: type,
-  });
+  };
+
+  console.log("Payload to save:", payload);
+
+  const response = await supabaseAdmin.from('saved_hooks').insert(payload);
+  const { data, error } = response;
+
+  console.log("Supabase Response:", { data, error });
 
   if (error) {
     console.error('SAVE HOOK FATAL INSERT ERROR:', error);

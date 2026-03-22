@@ -45,10 +45,10 @@ export async function POST(req: NextRequest) {
 
       let currentCount = usageData?.count || 0;
       
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toDateString();
       let lastResetDate = '';
       if (usageData?.last_reset) {
-        lastResetDate = new Date(usageData.last_reset).toISOString().split('T')[0];
+        lastResetDate = new Date(usageData.last_reset).toDateString();
       }
 
       console.log('RESET CHECK:', { today, lastResetDate, match: today === lastResetDate });
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       if (today !== lastResetDate) {
         currentCount = 0;
         await supabaseAdmin.from('user_usage').upsert(
-          { user_id: user.id, count: 0, last_reset: new Date().toISOString() },
+          { user_id: user.id, count: 0, last_reset: new Date().toISOString(), updated_at: new Date().toISOString() },
           { onConflict: 'user_id' }
         );
       }
