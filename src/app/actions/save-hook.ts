@@ -2,8 +2,6 @@
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
-export const dynamic = 'force-dynamic';
-
 export async function saveHookAction(originalText: string, hookContent: string, type: string) {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     console.error("CRITICAL: SERVICE_ROLE_KEY IS MISSING IN PRODUCTION");
