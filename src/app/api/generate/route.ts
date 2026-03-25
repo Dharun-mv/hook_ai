@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
     console.log("API ROUTE TRIGGERED for user:", user?.id);
 
     let newCount = 0;
+    let shouldIncrement = false;
 
     if (user) {
       // Check usage limits BEFORE AI generation
@@ -49,26 +50,20 @@ export async function POST(req: NextRequest) {
         .single();
 
       let currentCount = usageData?.count || 0;
-      
-      const today = new Date().toDateString();
-      let lastResetDate = '';
-      if (usageData?.last_reset) {
-        lastResetDate = new Date(usageData.last_reset).toDateString();
-      }
 
-      console.log("DB last_reset:", usageData?.last_reset, "Current Time:", new Date().toISOString());
-      console.log('RESET CHECK:', { today, lastResetDate, match: today === lastResetDate });
+      // Simple YYYY-MM-DD string comparison for reset
+      const todayStr = new Date().toISOString().split('T')[0];
+      const dbDateStr = usageData?.last_reset ? new Date(usageData.last_reset).toISOString().split('T')[0] : '';
 
-      if (today !== lastResetDate) {
-        try {
-          currentCount = 0;
-          await supabaseAdmin.from('user_usage').upsert(
-            { user_id: user.id, count: 0, last_reset: new Date().toISOString(), updated_at: new Date().toISOString() },
-            { onConflict: 'user_id' }
-          );
-        } catch (error) {
-          console.error("RESET FAILED:", error);
-        }
+      console.log('RESET CHECK:', { todayStr, dbDateStr, match: todayStr === dbDateStr });
+
+      if (todayStr !== dbDateStr) {
+        await supabaseAdmin
+          .from('user_usage')
+          .update({ count: 0, last_reset: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq('user_id', user.id);
+        console.log('RESET EXECUTED for user:', user.id);
+        currentCount = 0;
       }
 
       if (currentCount >= FREE_TIER_LIMIT) {
@@ -76,6 +71,7 @@ export async function POST(req: NextRequest) {
       }
 
       newCount = currentCount + 1;
+      shouldIncrement = true;
     }
 
     // Prepare Prompt
@@ -124,7 +120,7 @@ Return ONLY a valid JSON object with this exact structure (no markdown fences, j
     });
 
     // Valid stream started successfully! Safely increment DB stats now.
-    if (user) {
+    if (user && shouldIncrement) {
       console.log("Usage count updated:", newCount);
       Promise.allSettled([
         supabaseAdmin.from('user_usage').upsert(
