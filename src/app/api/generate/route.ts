@@ -43,34 +43,40 @@ export async function POST(req: NextRequest) {
 
     if (user) {
       // Check usage limits BEFORE AI generation
-      const { data: usageData } = await supabaseAdmin
+      const { data: usage } = await supabaseAdmin
         .from('user_usage')
         .select('count, last_reset')
         .eq('user_id', user.id)
         .single();
 
-      let currentCount = usageData?.count || 0;
+      // UTC DATE LOCK: Native JS string comparison only
+      const todayUTC = new Date().toISOString().split('T')[0];
+      const lastResetUTC = usage?.last_reset ? new Date(usage.last_reset).toISOString().split('T')[0] : 'NEVER';
 
-      // Simple YYYY-MM-DD string comparison for reset
-      const todayStr = new Date().toISOString().split('T')[0];
-      const dbDateStr = usageData?.last_reset ? new Date(usageData.last_reset).toISOString().split('T')[0] : '';
+      console.log('UTC LOCK CHECK:', { todayUTC, lastResetUTC });
 
-      console.log('RESET CHECK:', { todayStr, dbDateStr, match: todayStr === dbDateStr });
-
-      if (todayStr !== dbDateStr) {
+      // THE RESET TRIGGER
+      if (todayUTC !== lastResetUTC) {
+        console.log('RESETTING: ' + lastResetUTC + ' is not ' + todayUTC);
         await supabaseAdmin
           .from('user_usage')
-          .update({ count: 0, last_reset: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq('user_id', user.id);
-        console.log('RESET EXECUTED for user:', user.id);
-        currentCount = 0;
+          .upsert({
+            user_id: user.id,
+            count: 0,
+            last_reset: new Date().toISOString()
+          });
+        // Force the local variable to 0 so the limit check below passes
+        if (usage) {
+          usage.count = 0;
+        }
       }
 
-      if (currentCount >= FREE_TIER_LIMIT) {
+      // THE LIMIT CHECK
+      if ((usage?.count ?? 0) >= FREE_TIER_LIMIT) {
         return NextResponse.json({ error: 'Limit Reached' }, { status: 403 });
       }
 
-      newCount = currentCount + 1;
+      newCount = (usage?.count ?? 0) + 1;
       shouldIncrement = true;
     }
 
