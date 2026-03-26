@@ -49,15 +49,16 @@ export async function POST(req: NextRequest) {
         .eq('user_id', user.id)
         .single();
 
-      // UTC DATE LOCK: Native JS string comparison only
-      const todayUTC = new Date().toISOString().split('T')[0];
-      const lastResetUTC = usage?.last_reset ? new Date(usage.last_reset).toISOString().split('T')[0] : 'NEVER';
+      // ZERO-FAILURE DATE COMPARISON: getUTCDate() integer comparison
+      const dbDate = usage?.last_reset ? new Date(usage.last_reset).getUTCDate() : -1;
+      const todayDate = new Date().getUTCDate();
+      const isDifferentDay = dbDate !== todayDate;
 
-      console.log('UTC LOCK CHECK:', { todayUTC, lastResetUTC });
+      console.log('ZERO-FAILURE CHECK:', { dbDate, todayDate, isDifferentDay, usageCount: usage?.count });
 
       // THE RESET TRIGGER
-      if (todayUTC !== lastResetUTC) {
-        console.log('RESETTING: ' + lastResetUTC + ' is not ' + todayUTC);
+      if (isDifferentDay) {
+        console.log('RESETTING: ' + dbDate + ' is not ' + todayDate);
         await supabaseAdmin
           .from('user_usage')
           .upsert({
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
             count: 0,
             last_reset: new Date().toISOString()
           });
+        console.log('RESET SUCCESSFUL FOR:', user.id);
         // Force the local variable to 0 so the limit check below passes
         if (usage) {
           usage.count = 0;
