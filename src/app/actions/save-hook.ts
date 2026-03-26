@@ -1,6 +1,7 @@
 'use server';
 
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { revalidatePath } from 'next/cache';
 
 export async function saveHookAction(originalText: string, hookContent: string, type: string) {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -16,6 +17,7 @@ export async function saveHookAction(originalText: string, hookContent: string, 
 
     console.log("Saving hook for user:", user.id);
 
+    // Use supabaseAdmin with exact column names: user_id, original_text, hook_content, type
     const { data, error } = await supabaseAdmin
       .from('saved_hooks')
       .insert({
@@ -31,6 +33,13 @@ export async function saveHookAction(originalText: string, hookContent: string, 
     }
 
     console.log("Hook saved successfully:", data);
+
+    // Add 1-second delay to ensure DB propagation
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Revalidate path to ensure UI reflects the change
+    revalidatePath('/');
+
     return { success: true };
   } catch (error) {
     console.error('SAVE HOOK UNEXPECTED ERROR:', error);
