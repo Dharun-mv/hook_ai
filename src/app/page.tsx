@@ -14,6 +14,20 @@ const ANON_LIMIT = 2;
 const FREE_TIER_LIMIT = 5;
 
 export default function Home() {
+  // UI RECOVERY - Check if supabase is null (setup error)
+  if (!supabase) {
+    return (
+      <div className='min-h-screen bg-black text-white flex items-center justify-center p-10'>
+        <div className='max-w-md text-center'>
+          <h1 className='text-2xl font-bold mb-4 text-red-400'>Setup Error: Check Vercel Keys</h1>
+          <p className='text-neutral-400'>
+            Ensure NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are set in Vercel.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const [input, setInput] = useState('');
   const [hooks, setHooks] = useState<Hook[] | null>(null);
   const [loading, setLoading] = useState(false);
