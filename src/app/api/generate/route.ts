@@ -42,59 +42,51 @@ export async function POST(req: NextRequest) {
 
     let newCount = 0;
     let shouldIncrement = false;
+    let usage: { count: number; last_reset: string } | null = null;
 
     if (user) {
       // ==========================================
       // STEP 2: FETCH - Get current usage row
       // ==========================================
-      const { data: usage } = await supabaseAdmin
+      const { data } = await supabaseAdmin
         .from('user_usage')
         .select('count, last_reset')
         .eq('user_id', user.id)
         .single();
 
+      usage = data;
+
       // ==========================================
-      // STEP 3: THE CALENDAR CHECK (MUST BE FIRST)
-      // Compare UTC date with UTC date
+      // STEP 3: THE 'CLOCK' CHECK (MUST BE FIRST)
+      // Clean the house BEFORE checking the door
       // ==========================================
-      const now = new Date();
-      const currentUTCDay = now.getUTCDate();
-      const lastResetUTCDay = usage?.last_reset ? new Date(usage.last_reset).getUTCDate() : null;
-      const isDifferentDay = currentUTCDay !== lastResetUTCDay;
+      const today = new Date().getUTCDate();
+      const lastResetDate = usage?.last_reset ? new Date(usage.last_reset).getUTCDate() : null;
 
-      console.log('DATE RESET CHECK:', { lastResetUTCDay, currentUTCDay, isDifferentDay, usageCount: usage?.count });
+      console.log('CLOCK CHECK:', { today, lastResetDate, currentCount: usage?.count });
 
-      let usageCount = usage?.count ?? 0;
-
-      if (isDifferentDay) {
-        console.log('RESETTING: day ' + lastResetUTCDay + ' is not ' + currentUTCDay);
-        // Use supabaseAdmin to SET count = 0 and last_reset = now()
-        const { error: resetError } = await supabaseAdmin
-          .from('user_usage')
-          .upsert({
-            user_id: user.id,
-            count: 0,
-            last_reset: now.toISOString()
-          });
-
-        if (resetError) {
-          console.error('RESET FAILED:', resetError);
-        } else {
-          console.log('RESET SUCCESSFUL FOR:', user.id);
+      if (today !== lastResetDate) {
+        console.log('NEW DAY DETECTED. Resetting count to 0 for user:', user.id);
+        await supabaseAdmin.from('user_usage').upsert({
+          user_id: user.id,
+          count: 0,
+          last_reset: new Date().toISOString()
+        });
+        // IMPORTANT: Manually override the local variable so the next line doesn't block the user
+        if (usage) {
+          usage.count = 0;
         }
-        // CRITICAL: Manually set local variable to 0 so next step doesn't block
-        usageCount = 0;
       }
 
       // ==========================================
-      // STEP 4: THE BOUNCER CHECK
-      // NOW check: IF (usage.count >= 5) return 403
+      // STEP 4: THE 'GATEKEEPER' (SECOND)
+      // Only AFTER the reset logic, check the limit
       // ==========================================
-      if (usageCount >= FREE_TIER_LIMIT) {
+      if (usage && usage.count >= FREE_TIER_LIMIT) {
         return NextResponse.json({ error: 'Limit Reached' }, { status: 403 });
       }
 
-      newCount = usageCount + 1;
+      newCount = (usage?.count ?? 0) + 1;
       shouldIncrement = true;
     }
 
