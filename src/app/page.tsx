@@ -4,40 +4,19 @@ import { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { HookCard } from '@/components/HookCard';
-import { UpgradeModal } from '@/components/UpgradeModal';
 import { Toast } from '@/components/Toast';
 import { Hook } from '@/lib/hooks-generator';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 
-const ANON_LIMIT = 2;
-const FREE_TIER_LIMIT = 5;
-
 export default function Home() {
-  // UI RECOVERY - Check if supabase is null (setup error)
-  if (!supabase) {
-    return (
-      <div className='min-h-screen bg-black text-white flex items-center justify-center p-10'>
-        <div className='max-w-md text-center'>
-          <h1 className='text-2xl font-bold mb-4 text-red-400'>Setup Error: Check Vercel Keys</h1>
-          <p className='text-neutral-400'>
-            Ensure NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are set in Vercel.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const [input, setInput] = useState('');
   const [hooks, setHooks] = useState<Hook[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [usageCount, setUsageCount] = useState(0);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [anonId, setAnonId] = useState<string>('');
   const [generatedInput, setGeneratedInput] = useState('');
   const [mounted, setMounted] = useState(false);
 
@@ -45,52 +24,14 @@ export default function Home() {
     setMounted(true);
   }, []);
 
-  // Get or create anonymous ID
+  // Get user if logged in
   useEffect(() => {
-    let id = localStorage.getItem('anon_id');
-    if (!id) {
-      id = `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem('anon_id', id);
+    if (supabase) {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        setUser(user);
+      });
     }
-    setAnonId(id);
   }, []);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-    });
-  }, []);
-
-  // Track usage - runs whenever user or anonId changes
-  useEffect(() => {
-    if (user) {
-      // Logged in user - check user_usage table for persistent count
-      supabase
-        .from('user_usage')
-        .select('count')
-        .eq('user_id', user.id)
-        .single()
-        .then(({ data, error }) => {
-          if (error || !data) {
-            // No record yet - check usage_logs for today's count
-            supabase
-              .from('usage_logs')
-              .select('created_at', { count: 'exact' })
-              .eq('user_id', user.id)
-              .gte('created_at', new Date().toISOString().split('T')[0])
-              .then(({ count }) => {
-                setUsageCount(count || 0);
-              });
-          } else {
-            setUsageCount(data.count || 0);
-          }
-        });
-    } else if (anonId) {
-      // Anonymous user - count from localStorage (only after anonId is set)
-      const count = localStorage.getItem('anon_usage_count') || '0';
-      setUsageCount(parseInt(count, 10));
-    }
-  }, [user, anonId]);
 
   const showCopyToast = () => {
     setToastMessage('Copied to clipboard!');
@@ -105,13 +46,6 @@ export default function Home() {
   const handleGenerate = async () => {
     if (!input.trim()) return;
 
-    const limit = user ? FREE_TIER_LIMIT : ANON_LIMIT;
-
-    if (usageCount >= limit) {
-      setShowUpgradeModal(true);
-      return;
-    }
-
     setLoading(true);
     setError(null);
     setHooks(null);
@@ -119,9 +53,12 @@ export default function Home() {
     setGeneratedInput(input.trim());
 
     try {
-      // Get auth token
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      // Get auth token if user is logged in
+      let token = null;
+      if (supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token;
+      }
 
       const response = await fetch('/api/generate', {
         method: 'POST',
@@ -131,13 +68,6 @@ export default function Home() {
         },
         body: JSON.stringify({ input: input.trim() }),
       });
-
-      if (response.status === 403) {
-        setShowUpgradeModal(true);
-        setLoading(false);
-        setStreaming(false);
-        return;
-      }
 
       if (response.status >= 500) {
         setToastMessage('Server Maintenance');
@@ -165,11 +95,11 @@ export default function Home() {
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
           accumulatedText += chunk;
-          
+
           // Strip markdown codeblocks
           let fixStr = accumulatedText.replace(/^```json\s*/, '').replace(/```\s*$/, '');
           let parsed = null;
-          
+
           // Progressive strict JSON auto-completion to parse chunks mid-stream
           try { parsed = JSON.parse(fixStr); } catch (e) {
             try { parsed = JSON.parse(fixStr + '"}'); } catch (e) {
@@ -185,15 +115,6 @@ export default function Home() {
             setHooks([...parsed.hooks]);
           }
         }
-      }
-
-      // After streaming is complete, increment count for anonymous and authenticated users locally UI
-      const newCount = usageCount + 1;
-      setUsageCount(newCount);
-      if (!token) {
-        const newCount = usageCount + 1;
-        localStorage.setItem('anon_usage_count', newCount.toString());
-        setUsageCount(newCount);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate hooks');
@@ -212,9 +133,6 @@ export default function Home() {
       handleGenerate();
     }
   };
-
-  const limit = user ? FREE_TIER_LIMIT : ANON_LIMIT;
-  const remaining = Math.max(0, limit - usageCount);
 
   return (
     <div className="min-h-screen bg-black text-neutral-100">
@@ -235,28 +153,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Credits Display */}
-        {mounted && (
-          <div className="max-w-md mx-auto mb-8">
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-neutral-400">
-                {user ? 'Free Tier' : 'Anonymous'} Usage
-              </span>
-              <span className={remaining <= 1 ? 'text-orange-400' : 'text-emerald-400'}>
-                {remaining} remaining today
-              </span>
-            </div>
-            <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all ${
-                  remaining <= 1 ? 'bg-orange-500' : 'bg-emerald-500'
-                }`}
-                style={{ width: `${(usageCount / limit) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Input Section */}
         <div className="max-w-2xl mx-auto mb-12">
           <div className="relative">
@@ -268,11 +164,6 @@ export default function Home() {
               className="w-full h-32 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none transition-all"
             />
             <div className="absolute bottom-3 right-3 flex items-center gap-3">
-              {!user && (
-                <span className="text-xs text-neutral-500 mr-2">
-                  Sign in to save your hooks
-                </span>
-              )}
               <button
                 onClick={handleGenerate}
                 disabled={(loading || streaming) || !input.trim()}
@@ -333,12 +224,6 @@ export default function Home() {
           onClose={() => setToastMessage(null)}
         />
       )}
-
-      <UpgradeModal
-        isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-        currentLimit={limit}
-      />
     </div>
   );
 }

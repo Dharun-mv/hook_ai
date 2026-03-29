@@ -4,6 +4,12 @@ import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 
 export async function saveHookAction(originalText: string, hookContent: string, type: string) {
+  // Check if database is connected
+  if (!supabase || !supabaseAdmin) {
+    console.log('Database not connected - hook not saved');
+    return { success: false, message: 'Database not connected' };
+  }
+
   try {
     // Identify user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -27,7 +33,6 @@ export async function saveHookAction(originalText: string, hookContent: string, 
 
     if (error) {
       console.error('SAVE HOOK FATAL INSERT ERROR:', error);
-      // Return the exact Supabase error message
       return { error: error.message };
     }
 
