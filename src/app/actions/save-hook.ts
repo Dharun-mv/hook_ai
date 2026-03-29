@@ -4,20 +4,20 @@ import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 
 export async function saveHookAction(originalText: string, hookContent: string, type: string) {
-  // Check if database is connected
-  if (!supabase || !supabaseAdmin) {
-    console.log('Database not connected - hook not saved');
-    return { success: false, message: 'Database not connected' };
+  // Check if user is signed in
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { error: 'Please sign in to save hooks' };
+  }
+
+  // Check if supabaseAdmin is available
+  if (!supabaseAdmin) {
+    console.error('Database not connected - supabaseAdmin is null');
+    return { error: 'Database not connected' };
   }
 
   try {
-    // Identify user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return { error: 'Unauthorized' };
-    }
-
     console.log("Saving hook for user:", user.id);
 
     // Use supabaseAdmin to bypass RLS
@@ -38,8 +38,8 @@ export async function saveHookAction(originalText: string, hookContent: string, 
 
     console.log("Hook saved successfully:", data);
 
-    // Revalidate dashboard so the new hook shows up immediately
-    revalidatePath('/dashboard');
+    // Revalidate root path after successful insert
+    revalidatePath('/');
 
     return { success: true };
   } catch (error) {

@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Sparkles, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import { Sparkles, ArrowRight, Loader2, AlertCircle, LogIn } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { HookCard } from '@/components/HookCard';
 import { Toast } from '@/components/Toast';
 import { Hook } from '@/lib/hooks-generator';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
+
+const GUEST_LIMIT = 5;
 
 export default function Home() {
   const [input, setInput] = useState('');
@@ -16,6 +18,7 @@ export default function Home() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [guestCount, setGuestCount] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [generatedInput, setGeneratedInput] = useState('');
   const [mounted, setMounted] = useState(false);
@@ -33,6 +36,14 @@ export default function Home() {
     }
   }, []);
 
+  // Track guest usage
+  useEffect(() => {
+    if (!user && mounted) {
+      const count = localStorage.getItem('guest_usage_count') || '0';
+      setGuestCount(parseInt(count, 10));
+    }
+  }, [user, mounted]);
+
   const showCopyToast = () => {
     setToastMessage('Copied to clipboard!');
     setTimeout(() => setToastMessage(null), 3000);
@@ -45,6 +56,12 @@ export default function Home() {
 
   const handleGenerate = async () => {
     if (!input.trim()) return;
+
+    // Check guest limit before generating
+    if (!user && guestCount >= GUEST_LIMIT) {
+      setError('You have reached the free limit. Sign in for unlimited hooks!');
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -68,6 +85,14 @@ export default function Home() {
         },
         body: JSON.stringify({ input: input.trim() }),
       });
+
+      if (response.status === 403) {
+        const data = await response.json();
+        setError(data.error || 'Sign in to continue');
+        setLoading(false);
+        setStreaming(false);
+        return;
+      }
 
       if (response.status >= 500) {
         setToastMessage('Server Maintenance');
@@ -116,6 +141,13 @@ export default function Home() {
           }
         }
       }
+
+      // Increment guest count after successful generation
+      if (!user) {
+        const newCount = guestCount + 1;
+        localStorage.setItem('guest_usage_count', newCount.toString());
+        setGuestCount(newCount);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate hooks');
       setLoading(false);
@@ -133,6 +165,8 @@ export default function Home() {
       handleGenerate();
     }
   };
+
+  const isGuestAtLimit = !user && guestCount >= GUEST_LIMIT;
 
   return (
     <div className="min-h-screen bg-black text-neutral-100">
@@ -153,6 +187,45 @@ export default function Home() {
           </p>
         </div>
 
+        {/* Banner - Show only to guests */}
+        {!user && (
+          <div className="max-w-2xl mx-auto mb-8 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Sparkles className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              <p className="text-sm text-neutral-300">
+                <span className="font-semibold text-emerald-400">Enjoying the tool?</span> Sign in for unlimited daily hooks!
+              </p>
+            </div>
+            <a
+              href="/auth"
+              className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+            >
+              Sign In
+              <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
+        )}
+
+        {/* Guest Usage Counter */}
+        {!user && mounted && (
+          <div className="max-w-md mx-auto mb-8">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-neutral-400">Guest Usage</span>
+              <span className={guestCount >= GUEST_LIMIT - 1 ? 'text-orange-400' : 'text-emerald-400'}>
+                {GUEST_LIMIT - guestCount} remaining
+              </span>
+            </div>
+            <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all ${
+                  guestCount >= GUEST_LIMIT - 1 ? 'bg-orange-500' : 'bg-emerald-500'
+                }`}
+                style={{ width: `${(guestCount / GUEST_LIMIT) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Input Section */}
         <div className="max-w-2xl mx-auto mb-12">
           <div className="relative">
@@ -164,23 +237,33 @@ export default function Home() {
               className="w-full h-32 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none transition-all"
             />
             <div className="absolute bottom-3 right-3 flex items-center gap-3">
-              <button
-                onClick={handleGenerate}
-                disabled={(loading || streaming) || !input.trim()}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-neutral-700 disabled:text-neutral-500 text-black rounded-lg font-medium transition-all"
-              >
-                {loading || streaming ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {streaming ? 'Streaming...' : 'Generating...'}
-                  </>
-                ) : (
-                  <>
-                    Deconstruct
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+              {isGuestAtLimit ? (
+                <a
+                  href="/auth"
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black rounded-lg font-medium transition-all"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign In to Continue
+                </a>
+              ) : (
+                <button
+                  onClick={handleGenerate}
+                  disabled={(loading || streaming) || !input.trim()}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-neutral-700 disabled:text-neutral-500 text-black rounded-lg font-medium transition-all"
+                >
+                  {loading || streaming ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {streaming ? 'Streaming...' : 'Generating...'}
+                    </>
+                  ) : (
+                    <>
+                      Deconstruct
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
