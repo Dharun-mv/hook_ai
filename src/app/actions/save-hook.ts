@@ -1,15 +1,12 @@
 'use server';
 
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 
 export async function saveHookAction(originalText: string, hookContent: string, type: string) {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.error("CRITICAL: SERVICE_ROLE_KEY IS MISSING IN PRODUCTION");
-  }
-
   try {
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser();
+    // Identify user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
       return { error: 'Unauthorized' };
@@ -17,8 +14,8 @@ export async function saveHookAction(originalText: string, hookContent: string, 
 
     console.log("Saving hook for user:", user.id);
 
-    // Use supabaseAdmin (Service Role) to bypass RLS
-    // Column names: user_id, original_text, hook_content, type
+    // Use supabaseAdmin to bypass RLS
+    // Columns: user_id, original_text, hook_content, type
     const { data, error } = await supabaseAdmin
       .from('saved_hooks')
       .insert({
@@ -30,7 +27,7 @@ export async function saveHookAction(originalText: string, hookContent: string, 
 
     if (error) {
       console.error('SAVE HOOK FATAL INSERT ERROR:', error);
-      // Return the EXACT error message so I can see it
+      // Return the exact Supabase error message
       return { error: error.message };
     }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { supabase, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -7,16 +8,10 @@ const FREE_TIER_LIMIT = 5;
 
 export async function POST(req: NextRequest) {
   try {
-    // Initialize clients inside the function to avoid build-time instantiation
     const { GoogleGenAI } = await import('@google/genai');
-    const { supabaseAdmin } = await import('@/lib/supabase-admin');
 
-    // Validate environment variables
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('Missing GEMINI_API_KEY');
-    }
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error("CRITICAL: SERVICE_ROLE_KEY IS MISSING IN PRODUCTION");
     }
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -32,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '');
-      const { data: authData } = await supabaseAdmin.auth.getUser(token);
+      const { data: authData } = await supabase.auth.getUser(token);
       if (authData?.user) {
         user = authData.user;
       }
@@ -42,30 +37,25 @@ export async function POST(req: NextRequest) {
 
     let newCount = 0;
     let shouldIncrement = false;
-    let usage: { count: number; last_reset: string } | null = null;
+    let currentCount = 0;
 
     if (user) {
       // ==========================================
-      // STEP 2: FETCH - Get current usage row
+      // STEP 2: FETCH USAGE - Get the user_usage row
       // ==========================================
-      const { data } = await supabaseAdmin
+      const { data: usage } = await supabaseAdmin
         .from('user_usage')
         .select('count, last_reset')
         .eq('user_id', user.id)
         .single();
 
-      usage = data;
-
       // ==========================================
-      // STEP 3: THE 'CLOCK' CHECK (MUST BE FIRST)
-      // Clean the house BEFORE checking the door
+      // STEP 3: DATE RESET (THE PRIORITY)
       // ==========================================
       const today = new Date().getUTCDate();
       const lastResetDate = usage?.last_reset ? new Date(usage.last_reset).getUTCDate() : null;
 
-      console.log('CLOCK CHECK:', { today, lastResetDate, currentCount: usage?.count });
-
-      let currentCount = usage?.count ?? 0;
+      currentCount = usage?.count ?? 0;
 
       if (today !== lastResetDate) {
         await supabaseAdmin.from('user_usage').upsert({
@@ -73,14 +63,13 @@ export async function POST(req: NextRequest) {
           count: 0,
           last_reset: new Date().toISOString()
         });
-        // CRITICAL: Manually set the local variable to 0
+        // Update local variable for the next check
         currentCount = 0;
         console.log('AUTOMATIC RESET TRIGGERED for user', user.id);
       }
 
       // ==========================================
-      // THE LIMIT CHECK (SECOND)
-      // ONLY NOW, check if currentCount >= 5
+      // STEP 4: LIMIT CHECK
       // ==========================================
       if (currentCount >= FREE_TIER_LIMIT) {
         return NextResponse.json({ error: 'Limit Reached' }, { status: 403 });
@@ -90,7 +79,9 @@ export async function POST(req: NextRequest) {
       shouldIncrement = true;
     }
 
-    // Prepare Prompt
+    // ==========================================
+    // STEP 5: AI STREAM - Generate hook via Gemini
+    // ==========================================
     const prompt = `You are an elite viral content strategist. Transform the provided text into 3 high-impact hooks using these psychological frameworks:
 
 1. The Anti-Trend (Going against popular advice)
@@ -126,7 +117,6 @@ Return ONLY a valid JSON object with this exact structure (no markdown fences, j
   ]
 }`;
 
-    // Use streaming for faster perceived response
     const streamingResponse = await ai.models.generateContentStream({
       model: 'gemini-2.5-flash-lite',
       contents: prompt,
@@ -135,7 +125,9 @@ Return ONLY a valid JSON object with this exact structure (no markdown fences, j
       },
     });
 
-    // Valid stream started successfully! Safely increment DB stats now.
+    // ==========================================
+    // STEP 6: INCREMENT - After stream starts, increment count
+    // ==========================================
     if (user && shouldIncrement) {
       console.log("Usage count updated:", newCount);
       Promise.allSettled([
