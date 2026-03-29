@@ -34,11 +34,8 @@ export async function saveHookAction(originalText: string, hookContent: string, 
 
     console.log("Hook saved successfully:", data);
 
-    // Add 1-second delay to ensure DB propagation
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Revalidate path to ensure UI reflects the change
-    revalidatePath('/');
+    // Revalidate dashboard so the new hook shows up immediately
+    revalidatePath('/dashboard');
 
     return { success: true };
   } catch (error) {

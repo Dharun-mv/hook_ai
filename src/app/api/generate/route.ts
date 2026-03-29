@@ -54,21 +54,21 @@ export async function POST(req: NextRequest) {
         .single();
 
       // ==========================================
-      // STEP 3: DATE RESET (THE MOST IMPORTANT STEP)
-      // Compare 'today' vs 'last_reset' immediately
+      // STEP 3: THE CALENDAR CHECK (MUST BE FIRST)
+      // Compare UTC date with UTC date
       // ==========================================
       const now = new Date();
-      const todayKey = now.toISOString().slice(0, 10); // YYYY-MM-DD format
-      const lastResetKey = usage?.last_reset ? usage.last_reset.slice(0, 10) : null;
-      const isDifferentDay = todayKey !== lastResetKey;
+      const currentUTCDay = now.getUTCDate();
+      const lastResetUTCDay = usage?.last_reset ? new Date(usage.last_reset).getUTCDate() : null;
+      const isDifferentDay = currentUTCDay !== lastResetUTCDay;
 
-      console.log('DATE RESET CHECK:', { lastResetKey, todayKey, isDifferentDay, usageCount: usage?.count });
+      console.log('DATE RESET CHECK:', { lastResetUTCDay, currentUTCDay, isDifferentDay, usageCount: usage?.count });
 
       let usageCount = usage?.count ?? 0;
 
       if (isDifferentDay) {
-        console.log('RESETTING: ' + lastResetKey + ' is not ' + todayKey);
-        // Use supabaseAdmin to ensure this write succeeds
+        console.log('RESETTING: day ' + lastResetUTCDay + ' is not ' + currentUTCDay);
+        // Use supabaseAdmin to SET count = 0 and last_reset = now()
         const { error: resetError } = await supabaseAdmin
           .from('user_usage')
           .upsert({
@@ -82,13 +82,13 @@ export async function POST(req: NextRequest) {
         } else {
           console.log('RESET SUCCESSFUL FOR:', user.id);
         }
-        // Update local variable to 0 so the limit check doesn't fail
+        // CRITICAL: Manually set local variable to 0 so next step doesn't block
         usageCount = 0;
       }
 
       // ==========================================
-      // STEP 4: LIMIT CHECK
-      // ONLY NOW, check if usage.count >= 5
+      // STEP 4: THE BOUNCER CHECK
+      // NOW check: IF (usage.count >= 5) return 403
       // ==========================================
       if (usageCount >= FREE_TIER_LIMIT) {
         return NextResponse.json({ error: 'Limit Reached' }, { status: 403 });
