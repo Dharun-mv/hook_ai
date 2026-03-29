@@ -65,28 +65,28 @@ export async function POST(req: NextRequest) {
 
       console.log('CLOCK CHECK:', { today, lastResetDate, currentCount: usage?.count });
 
+      let currentCount = usage?.count ?? 0;
+
       if (today !== lastResetDate) {
-        console.log('NEW DAY DETECTED. Resetting count to 0 for user:', user.id);
         await supabaseAdmin.from('user_usage').upsert({
           user_id: user.id,
           count: 0,
           last_reset: new Date().toISOString()
         });
-        // IMPORTANT: Manually override the local variable so the next line doesn't block the user
-        if (usage) {
-          usage.count = 0;
-        }
+        // CRITICAL: Manually set the local variable to 0
+        currentCount = 0;
+        console.log('AUTOMATIC RESET TRIGGERED for user', user.id);
       }
 
       // ==========================================
-      // STEP 4: THE 'GATEKEEPER' (SECOND)
-      // Only AFTER the reset logic, check the limit
+      // THE LIMIT CHECK (SECOND)
+      // ONLY NOW, check if currentCount >= 5
       // ==========================================
-      if (usage && usage.count >= FREE_TIER_LIMIT) {
+      if (currentCount >= FREE_TIER_LIMIT) {
         return NextResponse.json({ error: 'Limit Reached' }, { status: 403 });
       }
 
-      newCount = (usage?.count ?? 0) + 1;
+      newCount = currentCount + 1;
       shouldIncrement = true;
     }
 
