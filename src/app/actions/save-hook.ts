@@ -5,15 +5,15 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { revalidatePath } from 'next/cache';
 
 export async function saveHookAction(
+  userId: string,
   originalText: string,
   hookContent: string,
-  type: string,
-  userId: string
+  type: string
 ) {
   // Verify userId is provided
   if (!userId) {
     console.error('SAVE HOOK: No userId provided');
-    return { error: 'User ID is required' };
+    return { error: 'No User ID provided' };
   }
 
   // Check if supabaseAdmin is available
@@ -23,20 +23,8 @@ export async function saveHookAction(
   }
 
   try {
-    console.log("SERVER ACTION AUTH CHECK:", userId);
+    console.log("SERVER ACTION AUTH CHECK:", userId || "No User Found");
     console.log("Saving hook for user:", userId);
-
-    // Verify user exists using supabaseAdmin
-    const { data: userData, error: userError } = await supabaseAdmin
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .single();
-
-    if (userError || !userData) {
-      console.error('User verification failed:', userError);
-      return { error: 'User not found' };
-    }
 
     // Use supabaseAdmin to bypass RLS
     // Columns: user_id, original_text, hook_content, type
@@ -50,7 +38,7 @@ export async function saveHookAction(
       });
 
     if (error) {
-      console.error('SAVE HOOK FATAL INSERT ERROR:', error);
+      console.error('SAVE HOOK FATAL INSERT ERROR:', JSON.stringify(error, null, 2));
       return { error: error.message };
     }
 
