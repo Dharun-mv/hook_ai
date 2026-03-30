@@ -73,7 +73,7 @@ export function HookCard({ hook, user, originalText, isSaved, onCopy, onSave, on
       await supabase.from('saved_hooks').delete().eq('hook_content', hook.content);
       setSaved(false);
     } else {
-      const result = await saveHookAction(originalText, hook.content, hook.type);
+      const result = await saveHookAction(originalText, hook.content, hook.type, user.id);
       if (result.success) {
         setSaved(true);
         onSave?.();

@@ -1,42 +1,19 @@
 'use server';
 
-import { createClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { revalidatePath } from 'next/cache';
 
-export async function saveHookAction(originalText: string, hookContent: string, type: string) {
-  // Create Supabase client with cookies for server action auth
-  const cookieStore = await cookies();
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder',
-    {
-      cookies: {
-        getAll: () => {
-          const allCookies = cookieStore.getAll();
-          return allCookies.map((cookie) => ({
-            name: cookie.name,
-            value: cookie.value,
-          }));
-        },
-        setAll: (cookiesToSet) => {
-          for (const cookie of cookiesToSet) {
-            cookieStore.set(cookie.name, cookie.value, cookie);
-          }
-        },
-      },
-    }
-  );
-
-  // Check if user is signed in
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-  console.log("SERVER ACTION AUTH CHECK:", user?.id || "No User Found");
-
-  if (authError || !user) {
-    console.error('Auth error:', authError);
-    return { error: 'Please sign in to save hooks' };
+export async function saveHookAction(
+  originalText: string,
+  hookContent: string,
+  type: string,
+  userId: string
+) {
+  // Verify userId is provided
+  if (!userId) {
+    console.error('SAVE HOOK: No userId provided');
+    return { error: 'User ID is required' };
   }
 
   // Check if supabaseAdmin is available
@@ -46,14 +23,27 @@ export async function saveHookAction(originalText: string, hookContent: string, 
   }
 
   try {
-    console.log("Saving hook for user:", user.id);
+    console.log("SERVER ACTION AUTH CHECK:", userId);
+    console.log("Saving hook for user:", userId);
+
+    // Verify user exists using supabaseAdmin
+    const { data: userData, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !userData) {
+      console.error('User verification failed:', userError);
+      return { error: 'User not found' };
+    }
 
     // Use supabaseAdmin to bypass RLS
     // Columns: user_id, original_text, hook_content, type
     const { data, error } = await supabaseAdmin
       .from('saved_hooks')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         original_text: originalText,
         hook_content: hookContent,
         type: type,
