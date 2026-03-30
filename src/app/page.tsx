@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Sparkles, ArrowRight, Loader2, AlertCircle, LogIn } from 'lucide-react';
+import Link from 'next/link';
 import { Navbar } from '@/components/Navbar';
 import { HookCard } from '@/components/HookCard';
 import { Toast } from '@/components/Toast';
@@ -51,6 +52,11 @@ export default function Home() {
 
   const showSaveToast = () => {
     setToastMessage('Hook saved successfully!');
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const showAuthRequiredToast = () => {
+    setToastMessage('Sign in to save your favorite hooks!');
     setTimeout(() => setToastMessage(null), 3000);
   };
 
@@ -196,33 +202,37 @@ export default function Home() {
                 <span className="font-semibold text-emerald-400">Enjoying the tool?</span> Sign in for unlimited daily hooks!
               </p>
             </div>
-            <a
-              href="/auth"
+            <Link
+              href="/login"
               className="flex items-center gap-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
             >
               Sign In
               <ArrowRight className="w-4 h-4" />
-            </a>
+            </Link>
           </div>
         )}
 
-        {/* Guest Usage Counter */}
-        {!user && mounted && (
+        {/* Usage Counter */}
+        {mounted && (
           <div className="max-w-md mx-auto mb-8">
             <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-neutral-400">Guest Usage</span>
-              <span className={guestCount >= GUEST_LIMIT - 1 ? 'text-orange-400' : 'text-emerald-400'}>
-                {GUEST_LIMIT - guestCount} remaining
+              <span className="text-neutral-400">
+                {user ? 'Unlimited Member' : 'Guest Usage'}
+              </span>
+              <span className={user ? 'text-emerald-400' : (guestCount >= GUEST_LIMIT - 1 ? 'text-orange-400' : 'text-emerald-400')}>
+                {user ? 'Unlimited daily hooks' : `${GUEST_LIMIT - guestCount} remaining`}
               </span>
             </div>
-            <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all ${
-                  guestCount >= GUEST_LIMIT - 1 ? 'bg-orange-500' : 'bg-emerald-500'
-                }`}
-                style={{ width: `${(guestCount / GUEST_LIMIT) * 100}%` }}
-              />
-            </div>
+            {!user && (
+              <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all ${
+                    guestCount >= GUEST_LIMIT - 1 ? 'bg-orange-500' : 'bg-emerald-500'
+                  }`}
+                  style={{ width: `${(guestCount / GUEST_LIMIT) * 100}%` }}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -293,6 +303,7 @@ export default function Home() {
                   originalText={generatedInput}
                   onCopy={showCopyToast}
                   onSave={showSaveToast}
+                  onRequireAuth={showAuthRequiredToast}
                 />
               ))}
             </div>

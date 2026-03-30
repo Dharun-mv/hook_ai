@@ -15,6 +15,7 @@ interface HookCardProps {
   isSaved?: boolean;
   onCopy?: () => void;
   onSave?: () => void;
+  onRequireAuth?: () => void;
 }
 
 const icons = {
@@ -44,7 +45,7 @@ const colors = {
   },
 };
 
-export function HookCard({ hook, user, originalText, isSaved, onCopy, onSave }: HookCardProps) {
+export function HookCard({ hook, user, originalText, isSaved, onCopy, onSave, onRequireAuth }: HookCardProps) {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(isSaved);
   const [loading, setLoading] = useState(false);
@@ -60,7 +61,12 @@ export function HookCard({ hook, user, originalText, isSaved, onCopy, onSave }: 
   };
 
   const handleSave = async () => {
-    if (!user || !originalText) return;
+    if (!user) {
+      onRequireAuth?.();
+      return;
+    }
+    if (!originalText) return;
+
     setLoading(true);
 
     if (saved) {
