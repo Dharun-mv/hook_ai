@@ -7,6 +7,24 @@ export const maxDuration = 60;
 
 const GUEST_LIMIT = 5;
 
+// Fetch top 3 trending hooks for few-shot examples
+async function fetchTrendingExamples() {
+  if (!supabaseAdmin) return [];
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('trending_benchmarks')
+      .select('hook_text, hook_type, psychological_trigger')
+      .order('view_count', { ascending: false })
+      .limit(3);
+
+    if (error || !data) return [];
+    return data;
+  } catch {
+    return [];
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { GoogleGenAI } = await import('@google/genai');
@@ -40,7 +58,6 @@ export async function POST(req: NextRequest) {
     let guestId: string | null = null;
 
     if (!user) {
-      // GUEST: Check guest limit
       const cookieStore = await cookies();
       guestId = cookieStore.get('guest_id')?.value || null;
 
@@ -48,7 +65,6 @@ export async function POST(req: NextRequest) {
         guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       }
 
-      // Check guest usage via supabaseAdmin
       if (supabaseAdmin && guestId) {
         const { data: guestUsage } = await supabaseAdmin
           .from('guest_usage')
@@ -68,17 +84,54 @@ export async function POST(req: NextRequest) {
     }
 
     // ==========================================
-    // STEP 3: AI GENERATION
+    // STEP 3: FETCH TRENDING EXAMPLES FOR FEW-SHOT
     // ==========================================
-    const prompt = `You are an elite viral content strategist. Transform the provided text into 3 high-impact hooks using these psychological frameworks:
+    const trendingExamples = await fetchTrendingExamples();
 
-1. The Anti-Trend (Going against popular advice)
-2. The Specificity Hook (Using exact numbers/data)
-3. The "If/Then" Hook (Conditional logic that promises a result)
+    const fewShotContext = trendingExamples.length > 0
+      ? trendingExamples.map((ex, i) => `Example ${i + 1}:
+   - Hook: "${ex.hook_text}"
+   - Type: ${ex.hook_type}
+   - Trigger: ${ex.psychological_trigger || 'N/A'}
+   - Performance: Top trending (high view count)`).join('\n\n')
+      : 'No trending examples available - use your training on 2026 viral content patterns.';
 
-Input text: "${input}"
+    // ==========================================
+    // STEP 4: AI GENERATION WITH SYSTEM INSTRUCTIONS
+    // ==========================================
+    const systemInstruction = `You are the HOOK ARCHITECT - an elite viral content AI engine specialized in 2026 short-form video hooks (TikTok, Reels, Shorts).
 
-Return ONLY a valid JSON object with this exact structure (no markdown fences, just pure JSON):
+YOUR MISSION:
+Transform any input text into 3 psychologically-optimized viral hooks that stop scrolls and drive engagement.
+
+2026 VIRAL HOOK FRAMEWORKS:
+1. ANTI-TREND: Challenge popular advice, create controversy, go against the grain
+2. SPECIFICITY: Use exact numbers, data, timestamps - specificity = credibility
+3. IF/THEN: Conditional promise with clear cause-effect relationship
+
+PSYCHOLOGICAL TRIGGERS TO LEVERAGE:
+- Curiosity Gap (withhold key info to create tension)
+- Negative Constraint (what NOT to do performs 2x better)
+- Social Proof (implied popularity/authority)
+- Urgency/Scarcity (time-sensitive framing)
+- Pattern Interrupt (break expected narrative)
+- Identity Appeal (speak to who they want to be)
+
+VIRALITY SCORE CALCULATION (1-100):
+- 80-100: Elite - combines 2+ triggers, specific, emotionally charged
+- 50-79: Solid - clear hook with one strong trigger
+- Below 50: Weak - generic, no clear trigger, boring
+
+IMPROVEMENT TIPS MUST BE ACTIONABLE:
+- Camera direction (zoom, cut, angle)
+- Editing technique (text overlay, sound effect, timing)
+- Delivery note (pace, pause, emphasis)
+
+FEW-SHOT EXAMPLES FROM TRENDING BENCHMARKS:
+${fewShotContext}
+
+OUTPUT FORMAT:
+Return ONLY valid JSON with this exact structure - no markdown, no commentary:
 {
   "hooks": [
     {
@@ -86,38 +139,56 @@ Return ONLY a valid JSON object with this exact structure (no markdown fences, j
       "type": "anti-trend",
       "title": "The Anti-Trend",
       "description": "Going against popular advice",
-      "content": "<hook content here>"
+      "content": "<the actual hook text>",
+      "virality_score": <number 1-100>,
+      "psychological_trigger": "<specific trigger name>",
+      "improvement_tip": "<one sentence on filming/editing>"
     },
     {
       "id": "specificity",
       "type": "specificity",
       "title": "The Specificity Hook",
       "description": "Using exact numbers/data",
-      "content": "<hook content here>"
+      "content": "<the actual hook text>",
+      "virality_score": <number 1-100>,
+      "psychological_trigger": "<specific trigger name>",
+      "improvement_tip": "<one sentence on filming/editing>"
     },
     {
       "id": "if-then",
       "type": "if-then",
       "title": "The If/Then Hook",
       "description": "Conditional logic that promises a result",
-      "content": "<hook content here>"
+      "content": "<the actual hook text>",
+      "virality_score": <number 1-100>,
+      "psychological_trigger": "<specific trigger name>",
+      "improvement_tip": "<one sentence on filming/editing>"
     }
   ]
 }`;
 
+    const fullPrompt = `${systemInstruction}
+
+---
+
+INPUT TO TRANSFORM: "${input}"
+
+Return the JSON object now.`;
+
     const streamingResponse = await ai.models.generateContentStream({
       model: 'gemini-2.5-flash-lite',
-      contents: prompt,
+      contents: fullPrompt,
       config: {
         responseMimeType: 'application/json',
+        temperature: 0.8,
+        topP: 0.95,
       },
     });
 
     // ==========================================
-    // STEP 4: INCREMENT USAGE (Optional stats)
+    // STEP 5: INCREMENT USAGE
     // ==========================================
     if (user && supabaseAdmin) {
-      // Logged in user - increment user_usage
       Promise.allSettled([
         supabaseAdmin.from('user_usage').upsert(
           {
@@ -131,7 +202,6 @@ Return ONLY a valid JSON object with this exact structure (no markdown fences, j
         supabaseAdmin.from('usage_logs').insert({ user_id: user.id, input_text: input })
       ]).catch(() => {});
     } else if (supabaseAdmin && guestId) {
-      // Guest - increment guest_usage
       Promise.allSettled([
         supabaseAdmin.from('guest_usage').upsert(
           {
@@ -168,12 +238,11 @@ Return ONLY a valid JSON object with this exact structure (no markdown fences, j
       },
     });
 
-    // Set guest_id cookie if guest
     if (!user && guestId) {
       response.cookies.set('guest_id', guestId, {
         httpOnly: true,
         sameSite: 'lax',
-        maxAge: 86400, // 1 day
+        maxAge: 86400,
       });
     }
 

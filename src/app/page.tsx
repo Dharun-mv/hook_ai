@@ -9,12 +9,24 @@ import { Toast } from '@/components/Toast';
 import { Hook } from '@/lib/hooks-generator';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
+import { saveHookAction } from '@/app/actions/save-hook';
 
 const GUEST_LIMIT = 5;
 
+interface EnrichedHook extends Hook {
+  virality_score: number;
+  psychological_trigger: string;
+  improvement_tip: string;
+}
+
+interface HookWithSavedState extends EnrichedHook {
+  savedHookId?: string;
+  isSaved?: boolean;
+}
+
 export default function Home() {
   const [input, setInput] = useState('');
-  const [hooks, setHooks] = useState<Hook[] | null>(null);
+  const [hooks, setHooks] = useState<HookWithSavedState[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +40,6 @@ export default function Home() {
     setMounted(true);
   }, []);
 
-  // Get user if logged in
   useEffect(() => {
     if (supabase) {
       supabase.auth.getUser().then(({ data: { user } }) => {
@@ -37,13 +48,38 @@ export default function Home() {
     }
   }, []);
 
-  // Track guest usage
   useEffect(() => {
     if (!user && mounted) {
       const count = localStorage.getItem('guest_usage_count') || '0';
       setGuestCount(parseInt(count, 10));
     }
   }, [user, mounted]);
+
+  useEffect(() => {
+    if (!user || !hooks || hooks.length === 0) return;
+
+    const checkSavedStatus = async () => {
+      const hookContents = hooks.map(h => h.content);
+      const { data } = await supabase
+        .from('saved_hooks')
+        .select('id, hook_content')
+        .eq('user_id', user.id)
+        .in('hook_content', hookContents);
+
+      if (data) {
+        setHooks(prev => {
+          if (!prev) return prev;
+          return prev.map(h => ({
+            ...h,
+            isSaved: !!data.find(d => d.hook_content === h.content),
+            savedHookId: data.find(d => d.hook_content === h.content)?.id,
+          }));
+        });
+      }
+    };
+
+    checkSavedStatus();
+  }, [user, hooks?.length]);
 
   const showCopyToast = () => {
     setToastMessage('Copied to clipboard!');
@@ -63,7 +99,6 @@ export default function Home() {
   const handleGenerate = async () => {
     if (!input.trim()) return;
 
-    // Check guest limit before generating
     if (!user && guestCount >= GUEST_LIMIT) {
       setError('You have reached the free limit. Sign in for unlimited hooks!');
       return;
@@ -76,7 +111,6 @@ export default function Home() {
     setGeneratedInput(input.trim());
 
     try {
-      // Get auth token if user is logged in
       let token = null;
       if (supabase) {
         const { data: { session } } = await supabase.auth.getSession();
@@ -127,11 +161,9 @@ export default function Home() {
           const chunk = decoder.decode(value, { stream: true });
           accumulatedText += chunk;
 
-          // Strip markdown codeblocks
           let fixStr = accumulatedText.replace(/^```json\s*/, '').replace(/```\s*$/, '');
           let parsed = null;
 
-          // Progressive strict JSON auto-completion to parse chunks mid-stream
           try { parsed = JSON.parse(fixStr); } catch (e) {
             try { parsed = JSON.parse(fixStr + '"}'); } catch (e) {
               try { parsed = JSON.parse(fixStr + '"]}'); } catch (e) {
@@ -143,12 +175,11 @@ export default function Home() {
           }
 
           if (parsed?.hooks && Array.isArray(parsed.hooks)) {
-            setHooks([...parsed.hooks]);
+            setHooks(parsed.hooks);
           }
         }
       }
 
-      // Increment guest count after successful generation
       if (!user) {
         const newCount = guestCount + 1;
         localStorage.setItem('guest_usage_count', newCount.toString());
@@ -179,7 +210,6 @@ export default function Home() {
       <Navbar user={user} />
 
       <main className="max-w-5xl mx-auto px-4 py-16">
-        {/* Hero Section */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-sm text-neutral-400 mb-6">
             <Sparkles className="w-4 h-4 text-emerald-400" />
@@ -193,13 +223,12 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Banner - Show only to guests */}
         {!user && (
           <div className="max-w-2xl mx-auto mb-8 p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <Sparkles className="w-5 h-5 text-emerald-400 flex-shrink-0" />
               <p className="text-sm text-neutral-300">
-                <span className="font-semibold text-emerald-400">Enjoying the tool?</span> Sign in for unlimited daily hooks!
+                <span className="font-semibold text-emerald-400">Enjoying the tool?</span> Sign in for unlimited hooks!
               </p>
             </div>
             <Link
@@ -212,7 +241,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Usage Counter */}
         {mounted && (
           <div className="max-w-md mx-auto mb-8">
             <div className="flex items-center justify-between text-sm mb-2">
@@ -236,7 +264,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Input Section */}
         <div className="max-w-2xl mx-auto mb-12">
           <div className="relative">
             <textarea
@@ -278,7 +305,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Output Section */}
         {error && (
           <div className="max-w-md mx-auto p-4 rounded-xl border border-red-500/50 bg-red-500/5 flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
@@ -295,12 +321,14 @@ export default function Home() {
               Your Viral Hooks
             </h2>
             <div className="grid gap-4 md:grid-cols-3">
-              {hooks.map((hook) => (
+              {hooks.map((hook, index) => (
                 <HookCard
-                  key={hook.id}
+                  key={hook.id || index}
                   hook={hook}
                   user={user}
                   originalText={generatedInput}
+                  isSaved={hook.isSaved}
+                  savedHookId={hook.savedHookId}
                   onCopy={showCopyToast}
                   onSave={showSaveToast}
                   onRequireAuth={showAuthRequiredToast}

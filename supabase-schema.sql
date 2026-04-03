@@ -11,16 +11,36 @@ CREATE TABLE IF NOT EXISTS user_usage (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW()
 );
 
--- Create saved_hooks table
+-- Create trending_benchmarks table for few-shot learning
+CREATE TABLE IF NOT EXISTS trending_benchmarks (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  hook_text TEXT NOT NULL,
+  hook_type TEXT NOT NULL,
+  psychological_trigger TEXT,
+  view_count INTEGER DEFAULT 0,
+  engagement_rate DECIMAL(5,2),
+  platform TEXT DEFAULT 'tiktok',
+  is_verified BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW()
+);
+
+-- Create saved_hooks table with publishing features
 CREATE TABLE IF NOT EXISTS saved_hooks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL,
-  hook_id TEXT NOT NULL,
+  hook_id TEXT,
   hook_type TEXT NOT NULL,
   hook_content TEXT NOT NULL,
   hook_title TEXT NOT NULL,
   original_text TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW()
+  virality_score INTEGER,
+  psychological_trigger TEXT,
+  improvement_tip TEXT,
+  is_published BOOLEAN DEFAULT false,
+  actual_views INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW()
 );
 
 -- Create usage_logs table for tracking credits
@@ -37,11 +57,14 @@ CREATE INDEX IF NOT EXISTS idx_saved_hooks_user_id ON saved_hooks(user_id);
 CREATE INDEX IF NOT EXISTS idx_saved_hooks_hook_id ON saved_hooks(hook_id);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user_id ON usage_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON usage_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_trending_benchmarks_views ON trending_benchmarks(view_count DESC);
+CREATE INDEX IF NOT EXISTS idx_saved_hooks_published ON saved_hooks(is_published);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE user_usage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE saved_hooks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE trending_benchmarks ENABLE ROW LEVEL SECURITY;
 
 -- Policies for user_usage
 CREATE POLICY "Users can view their own usage"
@@ -69,6 +92,10 @@ CREATE POLICY "Users can delete their own saved hooks"
   ON saved_hooks FOR DELETE
   USING (auth.uid() = user_id);
 
+CREATE POLICY "Users can update their own saved hooks"
+  ON saved_hooks FOR UPDATE
+  USING (auth.uid() = user_id);
+
 -- Policies for usage_logs
 CREATE POLICY "Users can view their own usage logs"
   ON usage_logs FOR SELECT
@@ -77,3 +104,16 @@ CREATE POLICY "Users can view their own usage logs"
 CREATE POLICY "Users can insert their own usage logs"
   ON usage_logs FOR INSERT
   WITH CHECK (auth.uid() = user_id);
+
+-- Policies for trending_benchmarks (public read, admin write)
+CREATE POLICY "Anyone can view trending benchmarks"
+  ON trending_benchmarks FOR SELECT
+  USING (true);
+
+CREATE POLICY "Service role can insert benchmarks"
+  ON trending_benchmarks FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY "Service role can update benchmarks"
+  ON trending_benchmarks FOR UPDATE
+  USING (true);

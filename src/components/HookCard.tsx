@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Star, Copy, Check, Zap, Brain, TrendingUp } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Star, Copy, Check, Zap, Brain, TrendingUp, Globe, GlobeOff } from 'lucide-react';
 import { Hook } from '@/lib/hooks-generator';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -13,6 +13,7 @@ interface HookCardProps {
   user: User | null;
   originalText?: string;
   isSaved?: boolean;
+  savedHookId?: string;
   onCopy?: () => void;
   onSave?: () => void;
   onRequireAuth?: () => void;
@@ -45,13 +46,25 @@ const colors = {
   },
 };
 
-export function HookCard({ hook, user, originalText, isSaved, onCopy, onSave, onRequireAuth }: HookCardProps) {
+function getViralityBadgeColor(score: number | undefined) {
+  if (!score) return { bg: 'bg-neutral-700', text: 'text-neutral-300', border: 'border-neutral-600' };
+  if (score >= 80) return { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/50' };
+  if (score >= 50) return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/50' };
+  return { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/50' };
+}
+
+export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCopy, onSave, onRequireAuth }: HookCardProps) {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(isSaved);
   const [loading, setLoading] = useState(false);
+  const [isPublished, setIsPublished] = useState(hook.is_published ?? false);
+  const [actualViews, setActualViews] = useState(hook.actual_views?.toString() ?? '');
+  const [viewsInput, setViewsInput] = useState('');
+  const [updatingViews, setUpdatingViews] = useState(false);
 
   const Icon = icons[hook.type];
   const color = colors[hook.type];
+  const viralityColors = getViralityBadgeColor(hook.virality_score);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(hook.content);
@@ -85,6 +98,52 @@ export function HookCard({ hook, user, originalText, isSaved, onCopy, onSave, on
     setLoading(false);
   };
 
+  const handlePublishToggle = async () => {
+    if (!user || !savedHookId) return;
+
+    setLoading(true);
+    const { error } = await supabase
+      .from('saved_hooks')
+      .update({ is_published: !isPublished, updated_at: new Date().toISOString() })
+      .eq('id', savedHookId);
+
+    if (error) {
+      console.error('Failed to toggle publish status', error);
+    } else {
+      setIsPublished(!isPublished);
+    }
+    setLoading(false);
+  };
+
+  const handleSaveViews = async () => {
+    if (!user || !savedHookId || !viewsInput) return;
+
+    setLoading(true);
+    setUpdatingViews(true);
+    const views = parseInt(viewsInput, 10);
+
+    const { error } = await supabase
+      .from('saved_hooks')
+      .update({
+        actual_views: views,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', savedHookId);
+
+    if (error) {
+      console.error('Failed to save views', error);
+    } else {
+      setActualViews(viewsInput);
+      setViewsInput('');
+    }
+    setUpdatingViews(false);
+    setLoading(false);
+  };
+
+  const viralityScore = hook.virality_score;
+  const psychologicalTrigger = hook.psychological_trigger;
+  const improvementTip = hook.improvement_tip;
+
   return (
     <div
       className={cn(
@@ -101,6 +160,34 @@ export function HookCard({ hook, user, originalText, isSaved, onCopy, onSave, on
           <h3 className="font-semibold text-neutral-100">{hook.title}</h3>
         </div>
         <div className="flex items-center gap-1">
+          {/* Virality Score Badge */}
+          <div className={cn(
+            'px-2 py-1 rounded-md border text-xs font-bold mr-1',
+            viralityColors.bg,
+            viralityColors.text,
+            viralityColors.border
+          )}>
+            {viralityScore !== undefined ? `${viralityScore}` : 'N/A'}
+          </div>
+          {user && savedHookId && (
+            <button
+              onClick={handlePublishToggle}
+              disabled={loading}
+              className={cn(
+                'p-1.5 flex items-center gap-1 rounded-md transition-colors',
+                isPublished
+                  ? 'text-emerald-400 bg-emerald-400/10'
+                  : 'text-neutral-400 hover:text-emerald-400 hover:bg-neutral-800'
+              )}
+              title={isPublished ? 'Published' : 'Draft'}
+            >
+              {isPublished ? (
+                <Globe className="w-4 h-4" />
+              ) : (
+                <GlobeOff className="w-4 h-4" />
+              )}
+            </button>
+          )}
           {user && (
             <button
               onClick={handleSave}
@@ -133,7 +220,57 @@ export function HookCard({ hook, user, originalText, isSaved, onCopy, onSave, on
         </div>
       </div>
       <p className="text-sm text-neutral-400 mb-3">{hook.description}</p>
-      <p className="text-neutral-200 leading-relaxed">{hook.content}</p>
+      <p className="text-neutral-200 leading-relaxed mb-3">{hook.content}</p>
+
+      {/* AI Insights Section */}
+      {(psychologicalTrigger || improvementTip) && (
+        <div className="mt-4 pt-3 border-t border-neutral-800 space-y-2">
+          {psychologicalTrigger && (
+            <div className="flex items-start gap-2">
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Trigger:</span>
+              <span className="text-xs text-neutral-300">{psychologicalTrigger}</span>
+            </div>
+          )}
+          {improvementTip && (
+            <div className="flex items-start gap-2">
+              <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Tip:</span>
+              <span className="text-xs text-neutral-300">{improvementTip}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Publish Status & Actual Views */}
+      {user && savedHookId && isPublished && (
+        <div className="mt-3 pt-3 border-t border-neutral-800">
+          <div className="flex items-center gap-2 mb-2">
+            <Globe className="w-3 h-3 text-emerald-400" />
+            <span className="text-xs font-medium text-emerald-400">Published</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-neutral-400">Actual Views:</span>
+            {actualViews ? (
+              <span className="text-xs text-neutral-300 font-mono">{actualViews}</span>
+            ) : (
+              <span className="text-xs text-neutral-500 italic">Not set</span>
+            )}
+            <input
+              type="number"
+              value={viewsInput}
+              onChange={(e) => setViewsInput(e.target.value)}
+              placeholder="Enter views"
+              className="w-24 px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+            />
+            <button
+              onClick={handleSaveViews}
+              disabled={updatingViews || !viewsInput}
+              className="px-2 py-1 text-xs bg-emerald-500 hover:bg-emerald-400 disabled:bg-neutral-700 text-black font-medium rounded transition-colors"
+            >
+              {updatingViews ? '...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
