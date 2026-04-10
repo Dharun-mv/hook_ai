@@ -25,20 +25,18 @@ CREATE TABLE IF NOT EXISTS trending_benchmarks (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW()
 );
 
--- Create saved_hooks table with publishing features
+-- Create saved_hooks table with exact column names for Hook-Architect AI
 CREATE TABLE IF NOT EXISTS saved_hooks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL,
-  hook_id TEXT,
+  hook_text TEXT NOT NULL,
   hook_type TEXT NOT NULL,
-  hook_content TEXT NOT NULL,
-  hook_title TEXT NOT NULL,
-  original_text TEXT,
-  virality_score INTEGER,
+  virality_score INTEGER NOT NULL DEFAULT 50,
   psychological_trigger TEXT,
   improvement_tip TEXT,
-  is_published BOOLEAN DEFAULT false,
-  actual_views INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'draft',
+  actual_views BIGINT DEFAULT 0,
+  original_text TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW()
 );
