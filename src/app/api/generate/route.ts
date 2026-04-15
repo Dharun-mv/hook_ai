@@ -167,7 +167,7 @@ Return the JSON object now.`;
     const fullPrompt = `${systemInstruction}\n\n---\n\n${userPrompt}`;
 
     const streamingResponse = await ai.models.generateContentStream({
-      model: 'gemini-2.5-flash-lite',
+      model: 'gemini-1.5-flash',
       contents: fullPrompt,
       config: {
         responseMimeType: 'application/json',

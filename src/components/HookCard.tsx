@@ -47,10 +47,10 @@ const colors = {
 };
 
 function getViralityBadgeColor(score: number | undefined) {
-  if (!score) return { bg: 'bg-neutral-700', text: 'text-neutral-300', border: 'border-neutral-600' };
-  if (score >= 80) return { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/50' };
-  if (score >= 50) return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/50' };
-  return { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/50' };
+  if (!score) return { bg: 'bg-neutral-700', text: 'text-white', border: 'border-neutral-600' };
+  if (score >= 80) return { bg: 'bg-green-500', text: 'text-white', border: 'border-green-500' };
+  if (score >= 50) return { bg: 'bg-yellow-500', text: 'text-black', border: 'border-yellow-500' };
+  return { bg: 'bg-red-500', text: 'text-white', border: 'border-red-500' };
 }
 
 export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCopy, onSave, onRequireAuth }: HookCardProps) {
