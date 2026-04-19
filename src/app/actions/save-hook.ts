@@ -46,11 +46,13 @@ export async function saveHookAction(
   try {
     console.log("SERVER ACTION AUTH CHECK:", userId || "No User Found");
     console.log("Saving hook for user:", userId);
+    console.log("ATTEMPTING SAVE:", { user_id: userId, hook_content: hookContent });
 
     // Use supabaseAdmin to bypass RLS
     const insertData: Record<string, any> = {
       user_id: userId,
       original_text: originalText,
+      hook_content: hookContent,
       hook_text: hookContent,
       hook_type: type,
       hook_title: hookTitle || type,

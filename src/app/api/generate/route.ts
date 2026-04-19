@@ -230,7 +230,7 @@ OUTPUT FORMAT - RETURN ONLY VALID JSON:
   ]
 }
 
-You are a JSON-only generator. Your output MUST be a valid JSON array of objects. Output a valid JSON array. DO NOT use markdown code blocks like \`\`\`json. Do not include introductory text. Do not include follow-up text. Output ONLY the array.
+You are a raw data generator. Return ONLY a JSON array. No markdown, no backticks, no explanations.
 
 ${userPlan === 'pro' ?
 'PRO MODE: Use higher creativity (temperature 0.9), combine multiple psychological triggers, and provide more detailed reasoning.' :
@@ -271,16 +271,15 @@ Return the JSON array now.`;
 
       console.log("RAW AI RESPONSE:", fullResponse);
 
-      const extractJson = (text: string) => {
-        const match = text.match(/\[[\s\S]*\]/);
-        if (match) {
-          return match[0];
-        }
-        return text;
-      };
-
-      const sanitized = extractJson(fullResponse);
-      parsedResponse = JSON.parse(sanitized);
+      const startIdx = fullResponse.indexOf('[');
+      const endIdx = fullResponse.lastIndexOf(']') + 1;
+      
+      if (startIdx !== -1 && endIdx !== 0 && startIdx < endIdx) {
+        const jsonStr = fullResponse.substring(startIdx, endIdx);
+        parsedResponse = JSON.parse(jsonStr);
+      } else {
+        throw new Error('No array brackets found in response');
+      }
 
     } catch (parseError) {
       console.error('JSON Parse Failed. Raw Response:', fullResponse);

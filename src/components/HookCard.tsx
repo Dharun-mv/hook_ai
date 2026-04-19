@@ -248,7 +248,7 @@ export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCop
         </div>
       </div>
       <p className="text-sm text-neutral-400 mb-3">{hook.description}</p>
-      <p className="text-neutral-200 leading-relaxed mb-3 whitespace-pre-wrap">{hook.content}</p>
+      <p className="text-neutral-100 leading-relaxed mb-3 whitespace-pre-wrap break-words overflow-visible">{hook.content}</p>
 
       {/* AI Insights Section */}
       {(reasoning || psychologicalTrigger || improvementTip) && (
