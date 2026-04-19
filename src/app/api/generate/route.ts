@@ -230,7 +230,7 @@ OUTPUT FORMAT - RETURN ONLY VALID JSON:
   ]
 }
 
-CRITICAL: Return ONLY the JSON object. No markdown. No commentary.
+You are a JSON-only generator. Your output MUST be a valid JSON array of objects. Do not include markdown backticks. Do not include introductory text. Do not include follow-up text. Output ONLY the array.
 
 ${userPlan === 'pro' ?
 'PRO MODE: Use higher creativity (temperature 0.9), combine multiple psychological triggers, and provide more detailed reasoning.' :
@@ -248,53 +248,56 @@ Return the JSON array now.`;
 
     const fullPrompt = `${systemInstruction}\n\n---\n\n${userPrompt}`;
 
-    const streamingResponse = await ai.models.generateContentStream({
-      model: 'gemini-1.5-flash',
-      contents: fullPrompt,
-      config: {
-        responseMimeType: 'application/json',
-        temperature: userPlan === 'pro' ? 0.9 : 0.8,
-        topP: userPlan === 'pro' ? 0.98 : 0.95,
-      },
-    });
-
-    // Collect the full response
-    let fullResponse = '';
-    for await (const chunk of streamingResponse) {
-      if (chunk.text) {
-        fullResponse += chunk.text;
-      }
-    }
-
-    const cleanJson = (rawString: string) => {
-      // 1. Remove Markdown code blocks if they exist
-      let text = rawString.replace(/```json/g, '').replace(/```/g, '').trim();
-      // 2. Find the first '[' and the last ']' to strip any conversational filler
-      const start = text.indexOf('['); // Since we want an array of hooks
-      const end = text.lastIndexOf(']');
-      if (start !== -1 && end !== -1) {
-        return text.substring(start, end + 1);
-      }
-      return text;
-    };
-
-    // Parse JSON with error handling
     let parsedResponse: any;
+    let fullResponse = '';
+
     try {
-      const sanitized = cleanJson(fullResponse);
+      const streamingResponse = await ai.models.generateContentStream({
+        model: 'gemini-1.5-flash',
+        contents: fullPrompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: userPlan === 'pro' ? 0.9 : 0.8,
+          topP: userPlan === 'pro' ? 0.98 : 0.95,
+        },
+      });
+
+      // Collect the full response
+      for await (const chunk of streamingResponse) {
+        if (chunk.text) {
+          fullResponse += chunk.text;
+        }
+      }
+
+      console.log("RAW AI RESPONSE:", fullResponse);
+
+      const extractJson = (text: string) => {
+        const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        if (match) {
+          return match[0];
+        }
+        return text;
+      };
+
+      const sanitized = extractJson(fullResponse);
       parsedResponse = JSON.parse(sanitized);
+
     } catch (parseError) {
       console.error('JSON Parse Failed. Raw Response:', fullResponse);
-      // Emergency Fallback: Just return the raw text inside a valid object array
-      parsedResponse = [{
-        content: fullResponse.substring(0, 500).trim() || `Transform this: ${input}`,
-        score: 50,
-        reasoning: 'Parsing error fallback',
-        platform_fit: platform,
-        hook_type: 'anti-trend',
-        psychological_trigger: 'Curiosity Gap',
-        improvement_tip: 'Review and refine this hook manually'
-      }];
+      // Emergency Fallback: split raw text and construct manual objects
+      const lines = fullResponse.split('\n').filter(line => line.trim().length > 10);
+      parsedResponse = [];
+      for (let i = 0; i < 3; i++) {
+        parsedResponse.push({
+          content: lines[i] ? lines[i].trim() : `Fallback Hook ${i + 1}: ${input.substring(0, 50)}...`,
+          score: 50,
+          reasoning: 'Parsing error fallback',
+          platform_fit: platform === 'youtube' ? 'youtube' : platform,
+          hook_type: 'anti-trend',
+          psychological_trigger: 'Curiosity Gap',
+          improvement_tip: 'Review and refine this hook manually'
+        });
+      }
     }
 
     // Validate and normalize hooks
