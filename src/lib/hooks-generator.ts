@@ -14,6 +14,7 @@ export interface Hook {
   original_text?: string;
   title?: string;
   description?: string;
+  is_published?: boolean;
 }
 
 export function generateHooks(input: string): Hook[] {

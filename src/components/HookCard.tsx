@@ -73,10 +73,10 @@ export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCop
   const [updatingViews, setUpdatingViews] = useState(false);
 
   const hookType = hook.hook_type || 'anti-trend';
-  const viralityScore = hook.score || hook.virality_score;
+  const viralityScore = hook.score || hook.virality_score || 0;
   const Icon = icons[hookType];
   const color = colors[hookType];
-  const viralityColors = getViralityBadgeColor(viralityScore);
+  const badgeStyles = getViralityBadgeColor(viralityScore);
   const psychologicalTrigger = hook.psychological_trigger || 'Curiosity Gap';
   const improvementTip = hook.improvement_tip || 'Focus on clear delivery';
   const platformFit = hook.platform_fit || 'tiktok';
@@ -167,10 +167,6 @@ export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCop
     setUpdatingViews(false);
     setLoading(false);
   };
-  const hookType = hook.hook_type || 'anti-trend';
-  const Icon = icons[hookType];
-  const viralityColors = getViralityBadgeColor(viralityScore);
-
   return (
     <div
       className={cn(
@@ -194,9 +190,9 @@ export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCop
           {/* Virality Score Badge */}
           <div className={cn(
             'px-2 py-1 rounded-md border text-xs font-bold mr-1',
-            viralityColors.bg,
-            viralityColors.text,
-            viralityColors.border
+            badgeStyles.bg,
+            badgeStyles.text,
+            badgeStyles.border
           )}>
             {viralityScore !== undefined ? `${viralityScore}` : 'N/A'}
           </div>
