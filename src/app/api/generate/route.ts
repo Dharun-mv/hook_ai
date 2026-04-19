@@ -7,25 +7,59 @@ export const maxDuration = 60;
 
 const GUEST_LIMIT = 5;
 
+// Platform-specific prompt configurations
+const PLATFORM_CONFIG: Record<string, { name: string; maxLen: number; tone: string; tips: string }> = {
+  tiktok: {
+    name: 'TikTok',
+    maxLen: 100,
+    tone: 'casual, Gen Z, punchy, trend-aware',
+    tips: 'Use trending sound references, quick cuts, text overlays'
+  },
+  x: {
+    name: 'X (Twitter)',
+    maxLen: 280,
+    tone: 'concise, witty, thread-friendly',
+    tips: 'Hook must work as a standalone tweet, consider thread continuation'
+  },
+  linkedin: {
+    name: 'LinkedIn',
+    maxLen: 150,
+    tone: 'professional, insightful, career-focused',
+    tips: 'Lead with business value, use professional credibility markers'
+  },
+  instagram: {
+    name: 'Instagram',
+    maxLen: 120,
+    tone: 'visual, lifestyle, aspirational',
+    tips: 'Reference Reels format, visual storytelling, aesthetic appeal'
+  }
+};
+
 // Fallback examples when trending_benchmarks table is empty
 const FALLBACK_EXAMPLES = [
   {
     hook_text: "Stop trying to go viral. I gained 100K followers in 30 days by doing the exact opposite.",
     hook_type: "anti-trend",
     psychological_trigger: "Negative Constraint + Curiosity Gap",
-    virality_score: 92
+    virality_score: 92,
+    reasoning: "Challenges conventional wisdom while promising a counterintuitive secret",
+    platform_fit: "tiktok"
   },
   {
     hook_text: "I analyzed 10,000 viral videos. Here are the exact 3 seconds that determine if people watch or scroll.",
     hook_type: "specificity",
     psychological_trigger: "Social Proof + Specificity",
-    virality_score: 88
+    virality_score: 88,
+    reasoning: "Uses exact numbers to establish authority and creates curiosity about the '3 seconds'",
+    platform_fit: "linkedin"
   },
   {
     hook_text: "If your hook doesn't pass the 2-second test, your video is already dead. Here's the fix.",
     hook_type: "if-then",
     psychological_trigger: "Urgency + Pattern Interrupt",
-    virality_score: 85
+    virality_score: 85,
+    reasoning: "Creates urgency with time constraint and promises immediate solution",
+    platform_fit: "tiktok"
   }
 ];
 
@@ -35,7 +69,7 @@ async function fetchTrendingExamples() {
   try {
     const { data, error } = await supabaseAdmin
       .from('trending_benchmarks')
-      .select('hook_text, hook_type, psychological_trigger, virality_score')
+      .select('hook_text, hook_type, psychological_trigger, virality_score, reasoning, platform_fit')
       .order('view_count', { ascending: false })
       .limit(3);
 
@@ -63,16 +97,31 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const input = body.input;
+    const platform = body.platform || 'tiktok';
 
     // Auth check
     const authHeader = req.headers.get('authorization');
     let user: any = null;
+    let userPlan = 'free';
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.replace('Bearer ', '');
       const { data: authData } = await supabase.auth.getUser(token);
       if (authData?.user) {
         user = authData.user;
+
+        // Fetch user's plan
+        if (supabaseAdmin) {
+          const { data: usageData } = await supabaseAdmin
+            .from('user_usage')
+            .select('plan')
+            .eq('user_id', user.id)
+            .single();
+
+          if (usageData?.plan) {
+            userPlan = usageData.plan;
+          }
+        }
       }
     }
 
@@ -108,11 +157,20 @@ export async function POST(req: NextRequest) {
    - Hook: "${ex.hook_text}"
    - Type: ${ex.hook_type}
    - Trigger: ${ex.psychological_trigger || 'N/A'}
-   - Virality Score: ${ex.virality_score || 'N/A'}`
+   - Virality Score: ${ex.virality_score || 'N/A'}
+   - Reasoning: ${ex.reasoning || 'N/A'}
+   - Platform Fit: ${ex.platform_fit || 'N/A'}`
     ).join('\n\n');
 
-    // System instruction for Gemini
-    const systemInstruction = `You are the HOOK ARCHITECT - a Viral Growth Expert specializing in 2026 short-form video content (TikTok, Instagram Reels, YouTube Shorts).
+    const platformConfig = PLATFORM_CONFIG[platform] || PLATFORM_CONFIG.tiktok;
+
+    // System instruction for Gemini - Enhanced for Pro features
+    const systemInstruction = `You are the HOOK ARCHITECT PRO - a Viral Growth Expert specializing in 2026 short-form video content.
+
+CURRENT PLATFORM: ${platformConfig.name.toUpperCase()}
+- Target length: Under ${platformConfig.maxLen} characters
+- Tone: ${platformConfig.tone}
+- Production tips: ${platformConfig.tips}
 
 YOUR MISSION:
 Transform any input text into 3 psychologically-optimized viral hooks that stop scrolls and drive engagement.
@@ -135,6 +193,14 @@ VIRALITY SCORE GUIDELINES (1-100):
 - 50-79: Solid - clear hook with one strong psychological trigger
 - Below 50: Weak - generic, no clear trigger, boring
 
+REASONING REQUIREMENTS:
+Provide a 1-sentence psychological breakdown explaining WHY this hook will work.
+Example: "Uses negative constraint to create curiosity about the counterintuitive method"
+
+PLATFORM FIT ANALYSIS:
+Recommend which platform (TikTok, X, LinkedIn, Instagram) this hook is BEST suited for.
+Consider: length, tone, audience expectations, format constraints
+
 IMPROVEMENT TIPS MUST BE ACTIONABLE:
 - Camera direction (zoom, cut, angle changes)
 - Editing technique (text overlay, sound effect, timing)
@@ -147,18 +213,24 @@ OUTPUT FORMAT - RETURN ONLY VALID JSON:
 {
   "hooks": [
     {
-      "hook_text": "the actual hook text",
+      "content": "the actual hook text",
+      "score": number (1-100),
+      "reasoning": "1-sentence psychological breakdown",
+      "platform_fit": "tiktok | x | linkedin | instagram",
       "hook_type": "anti-trend | specificity | if-then",
-      "virality_score": number (1-100),
       "psychological_trigger": "specific trigger name",
       "improvement_tip": "one sentence on filming/editing"
     }
   ]
 }
 
-CRITICAL: Return ONLY the JSON object. No markdown. No commentary.`;
+CRITICAL: Return ONLY the JSON object. No markdown. No commentary.
 
-    const userPrompt = `Transform this input into 3 viral hooks:
+${userPlan === 'pro' ?
+'PRO MODE: Use higher creativity (temperature 0.9), combine multiple psychological triggers, and provide more detailed reasoning.' :
+'STANDARD MODE: Use balanced creativity (temperature 0.8) with clear, proven hook structures.'}`;
+
+    const userPrompt = `Transform this input into 3 viral hooks optimized for ${platformConfig.name}:
 
 INPUT: "${input}"
 
@@ -171,8 +243,8 @@ Return the JSON object now.`;
       contents: fullPrompt,
       config: {
         responseMimeType: 'application/json',
-        temperature: 0.8,
-        topP: 0.95,
+        temperature: userPlan === 'pro' ? 0.9 : 0.8,
+        topP: userPlan === 'pro' ? 0.98 : 0.95,
       },
     });
 
@@ -196,10 +268,12 @@ Return the JSON object now.`;
       parsedResponse = {
         hooks: [
           {
-            hook_text: fullResponse.trim() || `Transform this: ${input}`,
+            content: fullResponse.trim() || `Transform this: ${input}`,
+            score: 50,
+            reasoning: 'Fallback - parsing failed',
+            platform_fit: platform,
             hook_type: 'anti-trend',
-            virality_score: 50,
-            psychological_trigger: 'Fallback - parsing failed',
+            psychological_trigger: 'Curiosity Gap',
             improvement_tip: 'Review and refine this hook manually'
           }
         ]
@@ -208,13 +282,30 @@ Return the JSON object now.`;
 
     // Validate and normalize hooks
     const hooks = Array.isArray(parsedResponse?.hooks) ? parsedResponse.hooks : [];
-    const normalizedHooks = hooks.map((hook: any, index: number) => ({
-      hook_text: hook.hook_text || `Hook ${index + 1}: ${input}`,
-      hook_type: (['anti-trend', 'specificity', 'if-then'].includes(hook.hook_type) ? hook.hook_type : 'anti-trend') as 'anti-trend' | 'specificity' | 'if-then',
-      virality_score: Math.min(100, Math.max(1, parseInt(hook.virality_score) || 50)),
-      psychological_trigger: hook.psychological_trigger || 'Curiosity Gap',
-      improvement_tip: hook.improvement_tip || 'Focus on clear delivery and good lighting'
-    }));
+    const normalizedHooks = hooks.map((hook: any, index: number) => {
+      const baseHook = {
+        content: hook.content || `Hook ${index + 1}: ${input}`,
+        hook_type: (['anti-trend', 'specificity', 'if-then'].includes(hook.hook_type) ? hook.hook_type : 'anti-trend') as 'anti-trend' | 'specificity' | 'if-then',
+      };
+
+      if (userPlan === 'pro') {
+        return {
+          ...baseHook,
+          score: Math.min(100, Math.max(1, parseInt(hook.score) || 50)),
+          reasoning: hook.reasoning || 'Creates curiosity through unexpected framing',
+          platform_fit: (['tiktok', 'x', 'linkedin', 'instagram'].includes(hook.platform_fit) ? hook.platform_fit : platform) as 'tiktok' | 'x' | 'linkedin' | 'instagram',
+          psychological_trigger: hook.psychological_trigger || 'Curiosity Gap',
+          improvement_tip: hook.improvement_tip || platformConfig.tips
+        };
+      }
+
+      return {
+        ...baseHook,
+        // Default standard values for free users
+        platform_fit: platform as 'tiktok' | 'x' | 'linkedin' | 'instagram',
+        score: 50, // Standard neutral score
+      };
+    });
 
     // Save hooks to database immediately
     const savedHooks = [];
@@ -225,11 +316,13 @@ Return the JSON object now.`;
             .from('saved_hooks')
             .insert({
               user_id: user.id,
-              hook_text: hook.hook_text,
+              hook_text: hook.content,
               hook_type: hook.hook_type,
-              virality_score: hook.virality_score,
+              virality_score: hook.score,
               psychological_trigger: hook.psychological_trigger,
               improvement_tip: hook.improvement_tip,
+              platform_fit: hook.platform_fit,
+              reasoning: hook.reasoning,
               status: 'draft',
               actual_views: 0,
               original_text: input,
@@ -255,7 +348,8 @@ Return the JSON object now.`;
           user_id: user.id,
           count: 1,
           last_reset: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
+          plan: userPlan
         }, { onConflict: 'user_id' }),
         supabaseAdmin.from('usage_logs').insert({ user_id: user.id, input_text: input })
       ]).catch(() => {});

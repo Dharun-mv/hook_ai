@@ -8,6 +8,16 @@ import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { saveHookAction } from '@/app/actions/save-hook';
 
+function getPlatformIcon(platform: string) {
+  switch (platform) {
+    case 'tiktok': return '🎵';
+    case 'x': return '✕';
+    case 'linkedin': return '💼';
+    case 'instagram': return '📸';
+    default: return '📱';
+  }
+}
+
 interface HookCardProps {
   hook: Hook;
   user: User | null;
@@ -62,9 +72,15 @@ export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCop
   const [viewsInput, setViewsInput] = useState('');
   const [updatingViews, setUpdatingViews] = useState(false);
 
-  const Icon = icons[hook.type];
-  const color = colors[hook.type];
-  const viralityColors = getViralityBadgeColor(hook.virality_score);
+  const hookType = hook.hook_type || 'anti-trend';
+  const viralityScore = hook.score || hook.virality_score;
+  const Icon = icons[hookType];
+  const color = colors[hookType];
+  const viralityColors = getViralityBadgeColor(viralityScore);
+  const psychologicalTrigger = hook.psychological_trigger || 'Curiosity Gap';
+  const improvementTip = hook.improvement_tip || 'Focus on clear delivery';
+  const platformFit = hook.platform_fit || 'tiktok';
+  const reasoning = hook.reasoning || 'Creates curiosity through unexpected framing';
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(hook.content);
@@ -86,7 +102,19 @@ export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCop
       await supabase.from('saved_hooks').delete().eq('hook_content', hook.content);
       setSaved(false);
     } else {
-      const result = await saveHookAction(user.id, originalText, hook.content, hook.type);
+      const result = await saveHookAction(
+        user.id,
+        originalText,
+        hook.content,
+        hookType,
+        hook.title,
+        undefined,
+        viralityScore,
+        psychologicalTrigger,
+        improvementTip,
+        platformFit,
+        reasoning
+      );
       if (result.success) {
         setSaved(true);
         onSave?.();
@@ -139,10 +167,9 @@ export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCop
     setUpdatingViews(false);
     setLoading(false);
   };
-
-  const viralityScore = hook.virality_score;
-  const psychologicalTrigger = hook.psychological_trigger;
-  const improvementTip = hook.improvement_tip;
+  const hookType = hook.hook_type || 'anti-trend';
+  const Icon = icons[hookType];
+  const viralityColors = getViralityBadgeColor(viralityScore);
 
   return (
     <div
@@ -157,9 +184,13 @@ export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCop
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2">
           <Icon className={cn('w-5 h-5', color.icon)} />
-          <h3 className="font-semibold text-neutral-100">{hook.title}</h3>
+          <h3 className="font-semibold text-neutral-100">{hook.title || hookType}</h3>
         </div>
         <div className="flex items-center gap-1">
+          {/* Platform Fit Badge */}
+          <div className="px-2 py-1 rounded-md border border-neutral-600 bg-neutral-800 text-xs mr-1" title={`Best for ${platformFit}`}>
+            {getPlatformIcon(platformFit)}
+          </div>
           {/* Virality Score Badge */}
           <div className={cn(
             'px-2 py-1 rounded-md border text-xs font-bold mr-1',
@@ -223,8 +254,14 @@ export function HookCard({ hook, user, originalText, isSaved, savedHookId, onCop
       <p className="text-neutral-200 leading-relaxed mb-3">{hook.content}</p>
 
       {/* AI Insights Section */}
-      {(psychologicalTrigger || improvementTip) && (
+      {(reasoning || psychologicalTrigger || improvementTip) && (
         <div className="mt-4 pt-3 border-t border-neutral-800 space-y-2">
+          {reasoning && (
+            <div className="flex items-start gap-2">
+              <span className="text-xs font-medium text-emerald-500 uppercase tracking-wide">Why it works:</span>
+              <span className="text-xs text-neutral-300">{reasoning}</span>
+            </div>
+          )}
           {psychologicalTrigger && (
             <div className="flex items-start gap-2">
               <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Trigger:</span>

@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS user_usage (
   count INTEGER DEFAULT 0,
   last_reset TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW(),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW(),
+  plan TEXT DEFAULT 'free'
 );
 
 -- Create trending_benchmarks table for few-shot learning
@@ -37,6 +38,8 @@ CREATE TABLE IF NOT EXISTS saved_hooks (
   status TEXT DEFAULT 'draft',
   actual_views BIGINT DEFAULT 0,
   original_text TEXT,
+  platform_fit TEXT DEFAULT 'tiktok',
+  reasoning TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE 'utc' NOW()
 );

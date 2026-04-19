@@ -14,6 +14,8 @@ interface SaveHookParams {
   viralityScore?: number;
   psychologicalTrigger?: string;
   improvementTip?: string;
+  platformFit?: string;
+  reasoning?: string;
 }
 
 export async function saveHookAction(
@@ -25,7 +27,9 @@ export async function saveHookAction(
   hookId?: string,
   viralityScore?: number,
   psychologicalTrigger?: string,
-  improvementTip?: string
+  improvementTip?: string,
+  platformFit?: string,
+  reasoning?: string
 ) {
   // Verify userId is provided
   if (!userId) {
@@ -56,6 +60,8 @@ export async function saveHookAction(
     if (viralityScore !== undefined) insertData.virality_score = viralityScore;
     if (psychologicalTrigger) insertData.psychological_trigger = psychologicalTrigger;
     if (improvementTip) insertData.improvement_tip = improvementTip;
+    if (platformFit) insertData.platform_fit = platformFit;
+    if (reasoning) insertData.reasoning = reasoning;
 
     const { data, error } = await supabaseAdmin
       .from('saved_hooks')

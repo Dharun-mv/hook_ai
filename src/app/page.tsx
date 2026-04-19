@@ -10,6 +10,7 @@ import { Hook } from '@/lib/hooks-generator';
 import { supabase } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 import { saveHookAction } from '@/app/actions/save-hook';
+import { cn } from '@/lib/utils';
 
 const GUEST_LIMIT = 5;
 
@@ -17,6 +18,9 @@ interface EnrichedHook extends Hook {
   virality_score: number;
   psychological_trigger: string;
   improvement_tip: string;
+  reasoning?: string;
+  platform_fit?: 'tiktok' | 'x' | 'linkedin' | 'instagram';
+  score?: number;
 }
 
 interface HookWithSavedState extends EnrichedHook {
@@ -35,6 +39,7 @@ export default function Home() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [generatedInput, setGeneratedInput] = useState('');
   const [mounted, setMounted] = useState(false);
+  const [platform, setPlatform] = useState<'tiktok' | 'x' | 'linkedin' | 'instagram'>('tiktok');
 
   useEffect(() => {
     setMounted(true);
@@ -52,6 +57,12 @@ export default function Home() {
     if (!user && mounted) {
       const count = localStorage.getItem('guest_usage_count') || '0';
       setGuestCount(parseInt(count, 10));
+    }
+
+    // Load saved platform preference
+    const savedPlatform = localStorage.getItem('platform_preference') as 'tiktok' | 'x' | 'linkedin' | 'instagram';
+    if (savedPlatform && ['tiktok', 'x', 'linkedin', 'instagram'].includes(savedPlatform)) {
+      setPlatform(savedPlatform);
     }
   }, [user, mounted]);
 
@@ -123,7 +134,7 @@ export default function Home() {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ input: input.trim() }),
+        body: JSON.stringify({ input: input.trim(), platform }),
       });
 
       if (response.status === 403) {
@@ -185,6 +196,9 @@ export default function Home() {
         localStorage.setItem('guest_usage_count', newCount.toString());
         setGuestCount(newCount);
       }
+
+      // Save platform preference
+      localStorage.setItem('platform_preference', platform);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate hooks');
       setLoading(false);
@@ -271,9 +285,20 @@ export default function Home() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Paste your boring text here..."
-              className="w-full h-32 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none transition-all"
+              className="w-full h-32 px-4 py-3 pb-14 bg-neutral-900 border border-neutral-800 rounded-xl text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500/50 resize-none transition-all"
             />
             <div className="absolute bottom-3 right-3 flex items-center gap-3">
+              <select
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value as any)}
+                className="px-3 py-2 bg-neutral-800 border border-neutral-700 text-neutral-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all cursor-pointer"
+              >
+                <option value="tiktok">🎵 TikTok</option>
+                <option value="x">✕ X (Twitter)</option>
+                <option value="linkedin">💼 LinkedIn</option>
+                <option value="instagram">📸 Instagram</option>
+              </select>
+
               {isGuestAtLimit ? (
                 <a
                   href="/auth"
