@@ -230,7 +230,7 @@ OUTPUT FORMAT - RETURN ONLY VALID JSON:
   ]
 }
 
-You are a JSON-only generator. Your output MUST be a valid JSON array of objects. Do not include markdown backticks. Do not include introductory text. Do not include follow-up text. Output ONLY the array.
+You are a JSON-only generator. Your output MUST be a valid JSON array of objects. Output a valid JSON array. DO NOT use markdown code blocks like \`\`\`json. Do not include introductory text. Do not include follow-up text. Output ONLY the array.
 
 ${userPlan === 'pro' ?
 'PRO MODE: Use higher creativity (temperature 0.9), combine multiple psychological triggers, and provide more detailed reasoning.' :
@@ -272,7 +272,7 @@ Return the JSON array now.`;
       console.log("RAW AI RESPONSE:", fullResponse);
 
       const extractJson = (text: string) => {
-        const match = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        const match = text.match(/\[[\s\S]*\]/);
         if (match) {
           return match[0];
         }

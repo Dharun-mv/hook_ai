@@ -51,7 +51,7 @@ export async function saveHookAction(
     const insertData: Record<string, any> = {
       user_id: userId,
       original_text: originalText,
-      hook_content: hookContent,
+      hook_text: hookContent,
       hook_type: type,
       hook_title: hookTitle || type,
       hook_id: hookId || `${type}_${Date.now()}`,
