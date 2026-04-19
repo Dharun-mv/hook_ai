@@ -32,6 +32,12 @@ const PLATFORM_CONFIG: Record<string, { name: string; maxLen: number; tone: stri
     maxLen: 120,
     tone: 'visual, lifestyle, aspirational',
     tips: 'Reference Reels format, visual storytelling, aesthetic appeal'
+  },
+  youtube: {
+    name: 'YouTube',
+    maxLen: 100,
+    tone: 'high CTR, curiosity gaps, extreme specificity',
+    tips: 'Focus on high CTR, curiosity gaps, and extreme specificity (e.g., I tried X for 30 days so you don\'t have to)'
   }
 };
 
@@ -89,8 +95,8 @@ export async function POST(req: NextRequest) {
   try {
     const { GoogleGenAI } = await import('@google/genai');
 
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error('Missing GEMINI_API_KEY');
+    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY.trim() === '') {
+      throw new Error('Missing GEMINI_API_KEY in environment variables');
     }
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -216,7 +222,7 @@ OUTPUT FORMAT - RETURN ONLY VALID JSON:
       "content": "the actual hook text",
       "score": number (1-100),
       "reasoning": "1-sentence psychological breakdown",
-      "platform_fit": "tiktok | x | linkedin | instagram",
+      "platform_fit": "tiktok | x | linkedin | instagram | youtube",
       "hook_type": "anti-trend | specificity | if-then",
       "psychological_trigger": "specific trigger name",
       "improvement_tip": "one sentence on filming/editing"
@@ -259,18 +265,24 @@ Return the JSON object now.`;
     // Parse JSON with error handling
     let parsedResponse;
     try {
-      // Clean up response - remove markdown code blocks if present
-      let cleanJson = fullResponse.replace(/^```json\s*/, '').replace(/```\s*$/, '').trim();
+      // Clean up response - extract JSON block if wrapped in markdown
+      let cleanJson = fullResponse;
+      const jsonMatch = fullResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch && jsonMatch[1]) {
+        cleanJson = jsonMatch[1];
+      } else {
+        cleanJson = fullResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      }
       parsedResponse = JSON.parse(cleanJson);
     } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      // Fallback: create basic hooks from the response
+      console.error('JSON parse error from Gemini:', parseError, fullResponse);
+      // Fallback: create basic hooks from the raw response text
       parsedResponse = {
         hooks: [
           {
-            content: fullResponse.trim() || `Transform this: ${input}`,
+            content: fullResponse.substring(0, 500).trim() || `Transform this: ${input}`,
             score: 50,
-            reasoning: 'Fallback - parsing failed',
+            reasoning: 'Fallback generated due to parsing failure',
             platform_fit: platform,
             hook_type: 'anti-trend',
             psychological_trigger: 'Curiosity Gap',
@@ -293,7 +305,7 @@ Return the JSON object now.`;
           ...baseHook,
           score: Math.min(100, Math.max(1, parseInt(hook.score) || 50)),
           reasoning: hook.reasoning || 'Creates curiosity through unexpected framing',
-          platform_fit: (['tiktok', 'x', 'linkedin', 'instagram'].includes(hook.platform_fit) ? hook.platform_fit : platform) as 'tiktok' | 'x' | 'linkedin' | 'instagram',
+          platform_fit: (['tiktok', 'x', 'linkedin', 'instagram', 'youtube'].includes(hook.platform_fit) ? hook.platform_fit : platform) as 'tiktok' | 'x' | 'linkedin' | 'instagram' | 'youtube',
           psychological_trigger: hook.psychological_trigger || 'Curiosity Gap',
           improvement_tip: hook.improvement_tip || platformConfig.tips
         };
@@ -302,7 +314,7 @@ Return the JSON object now.`;
       return {
         ...baseHook,
         // Default standard values for free users
-        platform_fit: platform as 'tiktok' | 'x' | 'linkedin' | 'instagram',
+        platform_fit: platform as 'tiktok' | 'x' | 'linkedin' | 'instagram' | 'youtube',
         score: 50, // Standard neutral score
       };
     });
@@ -383,7 +395,7 @@ Return the JSON object now.`;
   } catch (error) {
     console.error('Generation execution error:', error);
     return NextResponse.json(
-      { error: 'Server Maintenance', hooks: [] },
+      { error: 'AI is overthinking. Please try again!', hooks: [] },
       { status: 500 }
     );
   }

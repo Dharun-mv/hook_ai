@@ -14,6 +14,7 @@ function getPlatformIcon(platform: string) {
     case 'x': return '✕';
     case 'linkedin': return '💼';
     case 'instagram': return '📸';
+    case 'youtube': return '▶️';
     default: return '📱';
   }
 }

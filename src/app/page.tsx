@@ -39,7 +39,7 @@ export default function Home() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [generatedInput, setGeneratedInput] = useState('');
   const [mounted, setMounted] = useState(false);
-  const [platform, setPlatform] = useState<'tiktok' | 'x' | 'linkedin' | 'instagram'>('tiktok');
+  const [platform, setPlatform] = useState<'tiktok' | 'x' | 'linkedin' | 'instagram' | 'youtube'>('tiktok');
 
   useEffect(() => {
     setMounted(true);
@@ -60,8 +60,8 @@ export default function Home() {
     }
 
     // Load saved platform preference
-    const savedPlatform = localStorage.getItem('platform_preference') as 'tiktok' | 'x' | 'linkedin' | 'instagram';
-    if (savedPlatform && ['tiktok', 'x', 'linkedin', 'instagram'].includes(savedPlatform)) {
+    const savedPlatform = localStorage.getItem('platform_preference') as 'tiktok' | 'x' | 'linkedin' | 'instagram' | 'youtube';
+    if (savedPlatform && ['tiktok', 'x', 'linkedin', 'instagram', 'youtube'].includes(savedPlatform)) {
       setPlatform(savedPlatform);
     }
   }, [user, mounted]);
@@ -146,7 +146,8 @@ export default function Home() {
       }
 
       if (response.status >= 500) {
-        setToastMessage('Server Maintenance');
+        setToastMessage('AI is overthinking. Please try again!');
+        setError('AI is overthinking. Please try again!');
         setLoading(false);
         setStreaming(false);
         return;
@@ -257,7 +258,8 @@ export default function Home() {
 
         {mounted && (
           <div className="max-w-md mx-auto mb-8">
-            <div className="flex items-center justify-between text-sm mb-2">
+
+            <div className="flex items-center justify-between text-sm mt-4 mb-2">
               <span className="text-neutral-400">
                 {user ? 'Unlimited Member' : 'Guest Usage'}
               </span>
@@ -297,6 +299,7 @@ export default function Home() {
                 <option value="x">✕ X (Twitter)</option>
                 <option value="linkedin">💼 LinkedIn</option>
                 <option value="instagram">📸 Instagram</option>
+                <option value="youtube">▶️ YouTube</option>
               </select>
 
               {isGuestAtLimit ? (

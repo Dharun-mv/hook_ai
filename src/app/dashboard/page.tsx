@@ -146,6 +146,7 @@ export default function Dashboard() {
               <option value="x">✕ X (Twitter)</option>
               <option value="linkedin">💼 LinkedIn</option>
               <option value="instagram">📸 Instagram</option>
+              <option value="youtube">▶️ YouTube</option>
             </select>
           </div>
         </div>
