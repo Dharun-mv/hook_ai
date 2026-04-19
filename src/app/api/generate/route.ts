@@ -236,11 +236,15 @@ ${userPlan === 'pro' ?
 'PRO MODE: Use higher creativity (temperature 0.9), combine multiple psychological triggers, and provide more detailed reasoning.' :
 'STANDARD MODE: Use balanced creativity (temperature 0.8) with clear, proven hook structures.'}`;
 
-    const userPrompt = `Transform this input into 3 viral hooks optimized for ${platformConfig.name}:
+    let userPrompt = `Transform this input into 3 viral hooks optimized for ${platformConfig.name}:
 
 INPUT: "${input}"
 
-Return the JSON object now.`;
+Return the JSON array now.`;
+
+    if (platform === 'youtube') {
+      userPrompt += '\n\nRespond ONLY with a raw JSON array. Do not include any text before or after the JSON.';
+    }
 
     const fullPrompt = `${systemInstruction}\n\n---\n\n${userPrompt}`;
 
@@ -262,39 +266,46 @@ Return the JSON object now.`;
       }
     }
 
-    // Parse JSON with error handling
-    let parsedResponse;
-    try {
-      // Clean up response - extract JSON block if wrapped in markdown
-      let cleanJson = fullResponse;
-      const jsonMatch = fullResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-      if (jsonMatch && jsonMatch[1]) {
-        cleanJson = jsonMatch[1];
-      } else {
-        cleanJson = fullResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+    const cleanJson = (rawString: string) => {
+      // 1. Remove Markdown code blocks if they exist
+      let text = rawString.replace(/```json/g, '').replace(/```/g, '').trim();
+      // 2. Find the first '[' and the last ']' to strip any conversational filler
+      const start = text.indexOf('['); // Since we want an array of hooks
+      const end = text.lastIndexOf(']');
+      if (start !== -1 && end !== -1) {
+        return text.substring(start, end + 1);
       }
-      parsedResponse = JSON.parse(cleanJson);
+      return text;
+    };
+
+    // Parse JSON with error handling
+    let parsedResponse: any;
+    try {
+      const sanitized = cleanJson(fullResponse);
+      parsedResponse = JSON.parse(sanitized);
     } catch (parseError) {
-      console.error('JSON parse error from Gemini:', parseError, fullResponse);
-      // Fallback: create basic hooks from the raw response text
-      parsedResponse = {
-        hooks: [
-          {
-            content: fullResponse.substring(0, 500).trim() || `Transform this: ${input}`,
-            score: 50,
-            reasoning: 'Fallback generated due to parsing failure',
-            platform_fit: platform,
-            hook_type: 'anti-trend',
-            psychological_trigger: 'Curiosity Gap',
-            improvement_tip: 'Review and refine this hook manually'
-          }
-        ]
-      };
+      console.error('JSON Parse Failed. Raw Response:', fullResponse);
+      // Emergency Fallback: Just return the raw text inside a valid object array
+      parsedResponse = [{
+        content: fullResponse.substring(0, 500).trim() || `Transform this: ${input}`,
+        score: 50,
+        reasoning: 'Parsing error fallback',
+        platform_fit: platform,
+        hook_type: 'anti-trend',
+        psychological_trigger: 'Curiosity Gap',
+        improvement_tip: 'Review and refine this hook manually'
+      }];
     }
 
     // Validate and normalize hooks
-    const hooks = Array.isArray(parsedResponse?.hooks) ? parsedResponse.hooks : [];
-    const normalizedHooks = hooks.map((hook: any, index: number) => {
+    let baseHooks = [];
+    if (Array.isArray(parsedResponse)) {
+      baseHooks = parsedResponse;
+    } else if (parsedResponse?.hooks && Array.isArray(parsedResponse.hooks)) {
+      baseHooks = parsedResponse.hooks;
+    }
+
+    const normalizedHooks = baseHooks.map((hook: any, index: number) => {
       const baseHook = {
         content: hook.content || `Hook ${index + 1}: ${input}`,
         hook_type: (['anti-trend', 'specificity', 'if-then'].includes(hook.hook_type) ? hook.hook_type : 'anti-trend') as 'anti-trend' | 'specificity' | 'if-then',
